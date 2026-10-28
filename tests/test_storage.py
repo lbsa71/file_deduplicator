@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from photoflow.adapters import LocalFileSystem
+from photoflow.adapters import LocalFileSystem, _rename_no_replace
 from photoflow.model import MARKER, PENDING, SIDECAR, encoded
 from photoflow.runner import Config, Runner
 from tests.fakes import FakeClock, FakeIds, MetadataReader
@@ -67,6 +67,20 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(self.fs.read_bytes('source.jpg'), b'original')
         self.assertEqual(self.fs.read_bytes('destination.jpg'), b'foreign')
         self.assertTrue((self.root / 'directory.jpg').is_dir())
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux no-overwrite directory rename')
+    def test_directory_publish_preserves_the_tree_and_rejects_existing_targets(self):
+        self.fs.atomic_write('staging/album/photo.jpg', b'photo', replace=False)
+        self.fs.atomic_write('inbox/existing/keep.jpg', b'keep', replace=False)
+        with self.assertRaises(OSError):
+            _rename_no_replace(self.root / 'staging', self.root / 'inbox/existing')
+        self.assertEqual(self.fs.read_bytes('staging/album/photo.jpg'), b'photo')
+        self.assertEqual(self.fs.read_bytes('inbox/existing/keep.jpg'), b'keep')
+        _rename_no_replace(self.root / 'staging', self.root / 'inbox/published')
+        self.fs._sync_dir(self.root)
+        self.fs._sync_dir(self.root / 'inbox')
+        self.assertFalse(self.fs.exists('staging'))
+        self.assertEqual(self.fs.read_bytes('inbox/published/album/photo.jpg'), b'photo')
 
     @unittest.skipUnless(sys.platform == 'linux', 'Linux no-overwrite rename adapter')
     def test_unsupported_no_overwrite_rename_fails_without_an_unsafe_fallback(self):

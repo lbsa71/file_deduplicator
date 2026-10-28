@@ -267,6 +267,25 @@ membership, and extracted-output hashes. Interrupted cleanup can resume.
 precede archive cleanup, so `archive_deleted` distinguishes those states.
 The core `photoflow run` command does not invoke this helper or delete ZIPs.
 
+For older archives in a working copy, the helper also exposes a general API:
+
+```python
+from scripts.extract_takeout import extract_legacy_archive
+
+extract_legacy_archive(
+    "/path/to/working-copy",
+    "albums/holiday.zip",
+    archive_number=1,
+    output_prefix="_expanded/holiday",
+    delete=True,
+)
+```
+
+Use a stable job number and output prefix for retries. Parts of the same split
+export can share an output prefix; unrelated archives can use separate prefixes
+to preserve their context. Cleanup removes only the verified working-copy ZIP.
+The supplied source folder remains available as the original backup.
+
 ## Development and extensions
 
 ```bash

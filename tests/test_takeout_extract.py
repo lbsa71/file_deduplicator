@@ -8,7 +8,7 @@ import warnings
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.extract_takeout import ExtractionError, extract_archive
+from scripts.extract_takeout import ExtractionError, extract_archive, extract_legacy_archive
 from photoflow.adapters import _rename_no_replace
 
 NAME = 'takeout-20261028T123735Z-1-001.zip'
@@ -22,6 +22,7 @@ class TakeoutExtractionTests(unittest.TestCase):
         self.root = Path(temporary.name)
 
     def archive(self, name=NAME, entries=None):
+        (self.root / name).parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(self.root / name, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
             for path, content in entries or [('Takeout/Google Photos/Alma/photo.jpg', b'photo')]:
                 archive.writestr(path, content)
@@ -253,6 +254,101 @@ class TakeoutExtractionTests(unittest.TestCase):
         with self.assertRaises(ExtractionError):
             extract_archive(self.root, NAME, delete=True)
         self.assertTrue(staged.is_file())
+
+    def test_legacy_nested_zip_extracts_beneath_explicit_prefix(self):
+        name = 'inbox/Old family export.zip'
+        self.archive(name, [('Family/photo.jpg', b'photo')])
+        result = extract_legacy_archive(self.root, name, archive_number=1,
+            output_prefix='_expanded/Old family export', delete=True)
+        self.assertTrue(result['archive_deleted'])
+        self.assertEqual(result['archive_relative_path'], name)
+        self.assertEqual(result['output_prefix'], '_expanded/Old family export')
+        self.assertEqual((self.root / '_expanded/Old family export/Family/photo.jpg').read_bytes(), b'photo')
+        self.assertFalse((self.root / name).exists())
+
+    def test_legacy_split_parts_share_one_output_group_and_keep_companions_adjacent(self):
+        prefix = '_expanded/Google Photos-export'
+        self.archive('part1.zip', [('Photos/photo.jpg', b'photo')])
+        self.archive('part2.zip', [('Photos/photo.jpg', b'photo'), ('Photos/photo.jpg.json', b'{"people":[]}')])
+        extract_legacy_archive(self.root, 'part1.zip', archive_number=1, output_prefix=prefix, delete=True)
+        second = extract_legacy_archive(self.root, 'part2.zip', archive_number=2, output_prefix=prefix, delete=True)
+        self.assertEqual(second['existing_files'], 1)
+        self.assertTrue((self.root / prefix / 'Photos/photo.jpg').exists())
+        self.assertTrue((self.root / prefix / 'Photos/photo.jpg.json').exists())
+        self.assertFalse((self.root / 'part1.zip').exists())
+        self.assertFalse((self.root / 'part2.zip').exists())
+
+    def test_legacy_distinct_groups_preserve_differing_same_named_members(self):
+        self.archive('one.zip', [('photo.jpg', b'one')])
+        self.archive('two.zip', [('photo.jpg', b'two')])
+        extract_legacy_archive(self.root, 'one.zip', archive_number=1, output_prefix='_expanded/one', delete=True)
+        extract_legacy_archive(self.root, 'two.zip', archive_number=2, output_prefix='_expanded/two', delete=True)
+        self.assertEqual((self.root / '_expanded/one/photo.jpg').read_bytes(), b'one')
+        self.assertEqual((self.root / '_expanded/two/photo.jpg').read_bytes(), b'two')
+
+    def test_legacy_prefix_change_on_retry_is_rejected(self):
+        self.archive('old.zip', [('photo.jpg', b'photo')])
+        extract_legacy_archive(self.root, 'old.zip', archive_number=1, output_prefix='_expanded/one')
+        with self.assertRaises(ExtractionError):
+            extract_legacy_archive(self.root, 'old.zip', archive_number=1, output_prefix='_expanded/two', delete=True)
+        self.assertTrue((self.root / 'old.zip').exists())
+        self.assertFalse((self.root / '_expanded/two').exists())
+
+    def test_legacy_prefix_change_is_rejected_even_after_input_was_deleted(self):
+        self.archive('old.zip', [('photo.jpg', b'photo')])
+        extract_legacy_archive(self.root, 'old.zip', archive_number=1, output_prefix='_expanded/one', delete=True)
+        with self.assertRaises(ExtractionError):
+            extract_legacy_archive(self.root, 'old.zip', archive_number=1, output_prefix='_expanded/two', delete=True)
+
+    def test_legacy_output_cannot_alias_its_archive_input(self):
+        name = '_expanded/archive.zip'
+        self.archive(name, [('archive.zip', b'payload')])
+        with self.assertRaises(ExtractionError):
+            extract_legacy_archive(self.root, name, archive_number=1, output_prefix='_expanded', delete=True)
+        self.assertTrue((self.root / name).exists())
+
+    def test_legacy_only_removes_the_working_copy_archive(self):
+        original = self.archive('originals/archive.zip', [('photo.jpg', b'photo')])
+        original_bytes = original.read_bytes()
+        working = self.root / 'working'
+        working.mkdir()
+        shutil.copyfile(original, working / 'archive.zip')
+        extract_legacy_archive(working, 'archive.zip', archive_number=1, output_prefix='_expanded/archive', delete=True)
+        self.assertEqual(original.read_bytes(), original_bytes)
+        self.assertFalse((working / 'archive.zip').exists())
+        self.assertEqual((working / '_expanded/archive/photo.jpg').read_bytes(), b'photo')
+
+    def test_legacy_input_and_prefix_are_safe_relative_paths(self):
+        for name, prefix in (('../archive.zip', '_expanded/one'), ('archive.zip.transferring', '_expanded/one'),
+                             ('archive.zip', '../outside'), ('archive.zip', '.')):
+            with self.subTest(name=name, prefix=prefix), self.assertRaises(ExtractionError):
+                extract_legacy_archive(self.root, name, archive_number=1, output_prefix=prefix, delete=True)
+
+    def test_legacy_prefixed_directories_and_staged_retry_keep_membership(self):
+        name = 'inbox/archive.zip'
+        prefix = '_expanded/family'
+        self.archive(name, [('Family/', b''), ('Family/photo.jpg', b'photo')])
+        def stop_after_staging(source, destination):
+            _rename_no_replace(source, destination)
+            if Path(source) == self.root / name:
+                raise SystemExit('stop after staging')
+        with patch('scripts.extract_takeout._rename_no_replace', side_effect=stop_after_staging):
+            with self.assertRaises(SystemExit):
+                extract_legacy_archive(self.root, name, archive_number=4, output_prefix=prefix, delete=True)
+        result = extract_legacy_archive(self.root, name, archive_number=4, output_prefix=prefix, delete=True)
+        self.assertTrue(result['archive_deleted'])
+        self.assertEqual(result['directories'], ['_expanded/family/Family'])
+        self.assertEqual(result['entries'][0]['path'], '_expanded/family/Family/photo.jpg')
+
+    def test_legacy_conflicting_shared_group_never_overwrites_or_deletes_second_zip(self):
+        self.archive('part1.zip', [('photo.jpg', b'one')])
+        self.archive('part2.zip', [('photo.jpg', b'two')])
+        prefix = '_expanded/group'
+        extract_legacy_archive(self.root, 'part1.zip', archive_number=1, output_prefix=prefix, delete=True)
+        with self.assertRaises(ExtractionError):
+            extract_legacy_archive(self.root, 'part2.zip', archive_number=2, output_prefix=prefix, delete=True)
+        self.assertTrue((self.root / 'part2.zip').exists())
+        self.assertEqual((self.root / prefix / 'photo.jpg').read_bytes(), b'one')
 
 
 if __name__ == '__main__':

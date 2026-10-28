@@ -102,7 +102,7 @@ passed syntax verification with a temporary installed-executable substitution.
       ExifTool. All 65 media hashes are preserved, source file inventory and
       sampled content hashes are unchanged, and every pass reports zero errors.
       The unchanged rescan performs zero hashes, extractions, or moves. The
-      source ZIP archives remain unopened.
+      source ZIP archives were not part of that pilot.
 
 The pilot is `/mnt/usb/Foton-managed-pilot-dblpihqj`; its summaries, source
 inventory, and checksum evidence are in `.photoflow/pilot/`. The original
@@ -117,7 +117,7 @@ inventory, and checksum evidence are in `.photoflow/pilot/`. The original
       Delete only verified ZIPs when `--delete` is explicitly requested.
 - [x] Test corrupt archives, duplicate/conflicting paths, path traversal,
       symlinks, modified completion records, and interrupted archive cleanup.
-- [ ] Complete the pipelined 25-part extraction under `/mnt/usb/tx`, removing
+- [x] Complete the pipelined 25-part extraction under `/mnt/usb/tx`, removing
       each ZIP only after verified output and durable completion. Three workers
       own disjoint archive-number shards, share destination locks, and wait for
       finalized names while the Mac transfer continues. Progress is recorded in
@@ -139,6 +139,33 @@ The real export also contains numbered supplemental collision variants such as
 remain preserved and reported as unmatched; an occurrence association must be
 proved before their annotations are attached. The pilot uses unambiguous
 standard-name pairs and does not claim full collision-variant coverage.
+
+### Unified processing inbox
+
+- [x] Preserve `/mnt/usb/Foton` and prepare a SHA-256-verified working copy:
+      4,498 source files, 29,293,986,400 bytes. Source signatures and inventory
+      remained unchanged during the copy.
+- [x] Expand the 13 real ZIPs in that copy, preserving their internal paths and
+      grouping the nine split Google Photos parts together. Verify all 4,468
+      extracted entries (17,826,140,480 bytes) before removing working-copy ZIPs.
+      Retain original ZIPs in the original Foton backup. Ignore Finder resource
+      files that merely have `.zip` suffixes.
+- [x] Publish the verified Foton copy and the complete new Takeout under
+      `/mnt/usb/PhotoLibrary/inbox/{Foton,Takeout}` using no-overwrite directory
+      renames. Persist publication intent and verify relocated paths and sizes.
+      Preserve the extraction manifests and their new root mappings.
+
+The new 25-part Takeout contains 32,631 verified file entries and
+52,079,131,389 extracted bytes. The final proof is
+`/mnt/usb/PhotoLibrary/.photoflow/preparation/consolidation.json`. New Takeout
+manifests are rooted at `PhotoLibrary/inbox`; legacy manifests are rooted at
+`PhotoLibrary/inbox/Foton`. Three existing incomplete `.partial` downloads are
+retained without expansion. The combined inbox is prepared for a subsequent
+processing pass; it has not been reorganized into UUID paths.
+
+Final validation: 83 repository tests, seven storage contracts on the actual
+exFAT volume, two real-data ingestion pilots, verified extraction of all 38
+archives, and checked directory publication.
 
 ## Follow-on layers
 

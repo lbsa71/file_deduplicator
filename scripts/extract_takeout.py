@@ -25,6 +25,7 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from photoflow.adapters import LocalFileSystem, _rename_no_replace
+from photoflow.model import relative_path
 
 STATE = '.takeout-extract'
 ARCHIVE = re.compile(r'takeout-20261028T123735Z-1-(\d{3})\.zip')
@@ -102,7 +103,7 @@ def _member_path(name):
         raise ExtractionError(f'unsafe archive member: {name!r}')
     value = name[:-1] if name.endswith('/') else name
     path = PurePosixPath(value)
-    if (not value or path.is_absolute() or ntpath.splitdrive(value)[0]
+    if (not value or value == '.' or not path.parts or path.is_absolute() or ntpath.splitdrive(value)[0]
             or path.as_posix() != value or any(part in ('.', '..') for part in path.parts)
             or any(part.endswith(('.', ' ')) for part in path.parts)):
         raise ExtractionError(f'unsafe archive member: {name!r}')
@@ -111,10 +112,13 @@ def _member_path(name):
     return path.as_posix()
 
 
-def _preflight(archive, root, *, check_space=True):
+def _preflight(archive, root, *, check_space=True, output_prefix='', archive_relative_path=None):
     entries, kinds = [], {}
     for info in archive.infolist():
-        path = _member_path(info.orig_filename)
+        member = _member_path(info.orig_filename)
+        path = _member_path(f'{output_prefix}/{member}') if output_prefix else member
+        if archive_relative_path and _key(path) == _key(archive_relative_path):
+            raise ExtractionError(f'extracted output aliases its input archive: {path}')
         mode = info.external_attr >> 16
         kind = stat.S_IFMT(mode)
         if kind not in (0, stat.S_IFREG, stat.S_IFDIR) or info.flag_bits & 1:
@@ -248,7 +252,9 @@ def _finish_staged(fs, saved, completion_path, delete):
             if _file_info(path)['sha256'] != saved['archive_sha256']:
                 raise ExtractionError('staged archive conflicts with completion record')
             with zipfile.ZipFile(path) as archive:
-                _verify_membership(saved, _preflight(archive, fs.root, check_space=False))
+                _verify_membership(saved, _preflight(archive, fs.root, check_space=False,
+                    output_prefix=saved.get('output_prefix', ''),
+                    archive_relative_path=saved.get('archive_relative_path', saved['archive_name'])))
             _verify_outputs(fs, saved['entries'], saved.get('directories', []))
             if delete:
                 path.unlink()
@@ -272,7 +278,26 @@ def extract_archive(root, archive_name, *, delete=False):
     match = ARCHIVE.fullmatch(archive_name) if isinstance(archive_name, str) else None
     if not match or not 1 <= int(match[1]) <= 25:
         raise ExtractionError('expected a finalized Takeout ZIP numbered 001 through 025')
-    number = int(match[1])
+    return _extract_job(root, archive_name, int(match[1]), '', delete)
+
+
+def extract_legacy_archive(root, archive_relative_path, *, archive_number, output_prefix, delete=False):
+    """Expand a working-copy ZIP beneath a stable, explicitly chosen group."""
+    try:
+        relative_path(archive_relative_path)
+        if (ntpath.splitdrive(archive_relative_path)[0]
+                or PurePosixPath(archive_relative_path).suffix.lower() != '.zip'
+                or _key(PurePosixPath(archive_relative_path).parts[0]) == _key(STATE)):
+            raise ValueError('expected a regular ZIP input outside extraction state')
+        prefix = _member_path(output_prefix)
+        if type(archive_number) is not int or not 1 <= archive_number <= 999:
+            raise ValueError('archive_number must be a stable integer from 1 through 999')
+    except (TypeError, ValueError) as error:
+        raise ExtractionError(str(error)) from error
+    return _extract_job(root, archive_relative_path, archive_number, prefix, delete)
+
+
+def _extract_job(root, archive_name, number, output_prefix, delete):
     try:
         fs = LocalFileSystem(root)
         archive_path = fs.native_path(archive_name)
@@ -282,8 +307,11 @@ def extract_archive(root, archive_name, *, delete=False):
     with _lock(fs, f'archive-{number:03d}'):
         try:
             saved = json.loads(fs.read_bytes(completion)) if fs.exists(completion) else None
-            if saved and (saved.get('archive_name') != archive_name or saved.get('schema_version') != 1):
-                raise ExtractionError('completion record belongs to another archive')
+            if saved and (saved.get('archive_name') != archive_name or saved.get('schema_version') != 1
+                    or saved.get('archive_relative_path', saved.get('archive_name')) != archive_name
+                    or saved.get('archive_number') != number
+                    or saved.get('output_prefix', '') != output_prefix):
+                raise ExtractionError('completion record belongs to another archive or output prefix')
             if not archive_path.exists():
                 if saved:
                     return _resume_without_input(fs, saved, completion, delete)
@@ -298,7 +326,8 @@ def extract_archive(root, archive_name, *, delete=False):
                         raise ExtractionError('same-named ZIP differs from completed archive; retained')
                     source.seek(0)
                     with zipfile.ZipFile(source) as archive:
-                        _verify_membership(saved, _preflight(archive, fs.root, check_space=False))
+                        _verify_membership(saved, _preflight(archive, fs.root, check_space=False,
+                            output_prefix=output_prefix, archive_relative_path=archive_name))
                     _verify_outputs(fs, saved['entries'], saved.get('directories', []))
                     _assert_archive_name(archive_path, source)
                     if delete:
@@ -308,7 +337,8 @@ def extract_archive(root, archive_name, *, delete=False):
                 source.seek(0)
                 entries, directories, existing = {}, [], 0
                 with zipfile.ZipFile(source) as archive:
-                    members = _preflight(archive, fs.root)
+                    members = _preflight(archive, fs.root, output_prefix=output_prefix,
+                        archive_relative_path=archive_name)
                     for index, (info, path, directory) in enumerate(members):
                         if directory:
                             target = fs.native_path(path)
@@ -327,6 +357,7 @@ def extract_archive(root, archive_name, *, delete=False):
                 _assert_archive_name(archive_path, source)
                 _verify_outputs(fs, list(entries.values()), directories)
                 report = {'schema_version': 1, 'status': 'completed', 'archive_name': archive_name,
+                    'archive_relative_path': archive_name, 'output_prefix': output_prefix,
                     'archive_number': number, 'archive_sha256': archive_hash,
                     'archive_size': before[2], 'entries': list(entries.values()),
                     'directories': sorted(set(directories)), 'existing_files': existing,
