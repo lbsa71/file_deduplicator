@@ -192,10 +192,50 @@ class ExifToolReader:
     def __init__(self, fs: LocalFileSystem, executable='exiftool'):
         self.fs = fs
         self.executable = executable
+        self._prepared = {}
         result = subprocess.run([executable, '-ver'], check=True, capture_output=True, text=True, timeout=10)
         self.version = 'exiftool-v1:' + result.stdout.strip()
 
+    def prepare(self, paths):
+        """Warm a bounded metadata batch without trusting changed filesystem inputs."""
+        self._prepared.clear()
+        inputs = {}
+        for path in paths:
+            if '\n' in path or '\r' in path:
+                continue  # Argument files are line-oriented; argv handles these safely.
+            try:
+                inputs[str(self.fs.native_path(path))] = (path, self.fs.stat(path))
+            except (OSError, ValueError):
+                continue
+        if not inputs:
+            return
+        try:
+            result = subprocess.run(
+                [self.executable, '-json', '-G1', '-a', '-s', '-n',
+                 '-charset', 'filename=UTF8', '-@', '-'],
+                input='\n'.join(inputs) + '\n', capture_output=True, text=True, timeout=60)
+            if result.returncode not in (0, 1):
+                return
+            rows = json.loads(result.stdout)
+            if not isinstance(rows, list):
+                return
+            for row in rows:
+                if not isinstance(row, dict) or row.get('SourceFile') not in inputs:
+                    continue
+                path, signature = inputs[row['SourceFile']]
+                try:
+                    if self.fs.stat(path) == signature:
+                        self._prepared[path] = (signature, row)
+                except (OSError, ValueError):
+                    pass
+        except (OSError, ValueError, subprocess.SubprocessError):
+            # A failed batch must not prevent independent per-file recovery.
+            self._prepared.clear()
+
     def read(self, path):
+        prepared = self._prepared.pop(path, None)
+        if prepared is not None and self.fs.stat(path) == prepared[0]:
+            return self._metadata(prepared[1])
         try:
             result = subprocess.run(
                 [self.executable, '-json', '-G1', '-a', '-s', '-n', str(self.fs.native_path(path))],
@@ -205,7 +245,11 @@ class ExifToolReader:
         rows = json.loads(result.stdout)
         if len(rows) != 1 or not isinstance(rows[0], dict):
             raise ValueError('ExifTool must return exactly one metadata object')
-        data = rows[0]
+        return self._metadata(rows[0])
+
+    @staticmethod
+    def _metadata(row):
+        data = dict(row)
         data.pop('SourceFile', None)
         if 'ExifTool:Error' in data:
             raise ValueError(data['ExifTool:Error'])

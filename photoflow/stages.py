@@ -55,6 +55,21 @@ class Fingerprint(ItemStage):
 
 
 class ExtractMetadata(ItemStage):
+    def run(self, batch, ctx):
+        for offset in range(0, len(batch), 64):
+            chunk = batch[offset:offset + 64]
+            prepare = getattr(ctx.reader, 'prepare', None)
+            dirty = [item.path for item in chunk if not item.blocked and
+                     item.record.data['stages'].get('embedded_metadata', {}).get('input_key')
+                     != input_key([item.record.sha, ctx.reader.version])]
+            if prepare and dirty:
+                prepare(dirty)
+            super().run(chunk, ctx)
+            if ctx.pending_failure:
+                return
+            for item in chunk:
+                ctx.persist(item)
+
     def process(self, item, ctx):
         record = item.record
         stable(ctx.fs, item.path, item.observed)

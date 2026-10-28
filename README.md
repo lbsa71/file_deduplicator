@@ -165,6 +165,10 @@ Reads and moves recheck source stability. Embedded extraction is keyed by
 content hash and reader version; imported JSON and overrides independently
 invalidate resolution. Scan timestamps and placement changes do not invalidate
 embedded extraction. Shared album JSON is indexed/read once per pass.
+Embedded metadata reads use batches of up to 64 dirty files per ExifTool
+process. Failed batches fall back to individual reads, and changed files cannot
+reuse prepared metadata. Metadata checkpoints are saved after each batch so an
+interrupted large pass can reuse completed extraction work.
 
 Exact matching uses size, a first-1-KiB digest, complete SHA-256, and byte
 comparison before establishing a duplicate relationship. All newly managed
@@ -200,6 +204,7 @@ reserved for metadata and cannot be selected as media.
 Finder resource forks (`._*`), `.DS_Store`, `.AppleDouble`, and `__MACOSX`
 folders are ignored and retained. Application state directories are excluded
 from ordinary scans, including extraction state nested beneath an inbox.
+Reserved sidecar-write temporary names (`.photoflow-tmp-*`) are also excluded.
 
 Every media move or sidecar relink first saves its intended final record in
 `.photoflow/pending`. Linux moves use a single no-overwrite rename. Recovery

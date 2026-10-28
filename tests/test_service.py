@@ -27,6 +27,23 @@ class ServiceTests(unittest.TestCase):
         return [json.loads(data) for path, data in self.fs.data.items()
                 if path.endswith(SIDECAR)]
 
+    def test_interrupted_metadata_pass_reuses_completed_chunks(self):
+        class InterruptedReader(MetadataReader):
+            def read(self, path):
+                if len(self.calls) == 64:
+                    raise KeyboardInterrupt('interrupted metadata pass')
+                return super().read(path)
+        for number in range(65):
+            self.fs.put(f'inbox/{number:03d}.jpg', f'photo-{number}'.encode())
+        self.reader = InterruptedReader()
+        with self.assertRaises(KeyboardInterrupt):
+            self.run_pass(move_files=False)
+        self.reader = MetadataReader()
+        result = self.run_pass(move_files=False)
+        self.assertFalse(result.errors, result.errors)
+        self.assertEqual(result.hashed, 0)
+        self.assertEqual(len(self.reader.calls), 1)
+
     def test_new_file_has_identity_source_history_and_convergent_location(self):
         self.fs.put('inbox/Christmas at Grandma.jpg', b'photo')
         first = self.run_pass()

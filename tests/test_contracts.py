@@ -18,6 +18,7 @@ class FileSystemContracts(unittest.TestCase):
                 with self.subTest(adapter=type(fs).__name__):
                     for path in ('photo.jpg', 'photo.jpg.json', '._photo.jpg',
                                  '._photo.jpg.photo.json', '.DS_Store',
+                                 '.photoflow-tmp-transient.jpg',
                                  '__MACOSX/._photo.jpg', '.AppleDouble/photo.jpg',
                                  'inbox/.takeout-extract/completed/001.json',
                                  '.photoflow/pending/move.json',

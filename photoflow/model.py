@@ -15,7 +15,7 @@ APPLICATION_STATE = frozenset((STATE, '.takeout-extract'))
 
 
 def auxiliary_name(name: str) -> bool:
-    return name.startswith('._') or name in ('.DS_Store', '.AppleDouble', '__MACOSX')
+    return name.startswith(('._', '.photoflow-tmp-')) or name in ('.DS_Store', '.AppleDouble', '__MACOSX')
 
 
 def relative_path(value: str, *, media: bool = False) -> str:

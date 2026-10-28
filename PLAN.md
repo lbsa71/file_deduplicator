@@ -160,12 +160,50 @@ The new 25-part Takeout contains 32,631 verified file entries and
 `/mnt/usb/PhotoLibrary/.photoflow/preparation/consolidation.json`. New Takeout
 manifests are rooted at `PhotoLibrary/inbox`; legacy manifests are rooted at
 `PhotoLibrary/inbox/Foton`. Three existing incomplete `.partial` downloads are
-retained without expansion. The combined inbox is prepared for a subsequent
-processing pass; it has not been reorganized into UUID paths.
+retained without expansion. This prepared the combined inbox for the processing
+pass described below.
 
 Final validation: 83 repository tests, seven storage contracts on the actual
 exFAT volume, two real-data ingestion pilots, verified extraction of all 38
 archives, and checked directory publication.
+
+### Full combined-collection pass
+
+- [x] Seal and fingerprint all 24,283 supported media files before moving them.
+      Save the record IDs, original paths, SHA-256 multiset, and byte totals as
+      a baseline. Confirm a cached, read-only preview has unique destinations.
+- [x] Batch optional ExifTool reads in groups of 64 dirty files, with signature
+      checks and individual-read fallback. Persist metadata checkpoints after
+      each group; test interrupted-pass reuse. Exclude reserved sidecar-write
+      temporary names from enumeration.
+- [x] Organize every media occurrence while retaining all duplicate bytes.
+      The initial pass moved 24,145 files and safely deferred 138 whose observed
+      filesystem information changed. The next pass rehashed changed signatures
+      and moved all 138 without new metadata extraction or further deferrals.
+- [x] Complete the final read-only rescan and compare every record against the
+      sealed baseline, including paths, sizes, identities, duplicate keepers,
+      source metadata, pending operations, and the untouched original backup.
+
+The completed library contains 13,034 dated canonical files, 436 undated
+canonical files, and 10,813 retained duplicate copies in review. All 24,283
+record IDs and the complete SHA-256 multiset match the baseline, totaling
+80,157,609,076 media bytes and 13,470 unique content hashes. There are no pending
+operations or supported media remaining in the inbox. All 16,277 raw JSON files
+and three incomplete downloads remain. Aggregated people labels appear on
+10,088 records, with 30 distinct labels; 4,451 keepers retain source occurrences
+from both Foton and the new Takeout.
+
+The final read-only rescan processed every record with zero hashes, extractions,
+move proposals, deferrals, or errors. All 89 repository tests pass. The original
+Foton inventory remains 4,498 files; seven files with changed filesystem IDs or
+other stat fields were rehashed and match their original SHA-256 values. Those
+stat observations never substitute for a content check when they disagree.
+
+Operational evidence is under
+`/mnt/usb/PhotoLibrary/.photoflow/runs/full-collection/`. Unmatched imported JSON
+is retained: 424 files are byte-identical to documents already embedded, 211
+contain distinct unmatched metadata, and one is invalid JSON. Ambiguous
+numbered variants remain separate rather than receiving guessed associations.
 
 ## Follow-on layers
 
