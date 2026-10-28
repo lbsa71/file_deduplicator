@@ -1,0 +1,12 @@
+[Unit]
+Description=Refine and organize the photo library
+RequiresMountsFor=/mnt/photos
+
+[Service]
+Type=oneshot
+User=stefan
+ExecStart=/opt/photoflow/.venv/bin/photoflow run /mnt/photos/PhotoLibrary --expect-library-id family-photos --exiftool
+TimeoutStartSec=infinity
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

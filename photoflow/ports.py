@@ -1,0 +1,40 @@
+"""Only the environmental operations the application uses."""
+
+from contextlib import AbstractContextManager
+from datetime import datetime
+from typing import BinaryIO, Protocol
+
+from .model import Signature
+
+
+class BusyError(Exception):
+    pass
+
+
+class ChangedError(Exception):
+    pass
+
+
+class FileSystem(Protocol):
+    def list_files(self, prefix: str = '') -> tuple[str, ...]: ...
+    def exists(self, path: str) -> bool: ...
+    def stat(self, path: str) -> Signature: ...
+    def read_bytes(self, path: str) -> bytes: ...
+    def open_binary(self, path: str) -> AbstractContextManager[BinaryIO]: ...
+    def atomic_write(self, path: str, data: bytes, *, replace: bool = True) -> None: ...
+    def move_no_replace(self, source: str, target: str) -> None: ...
+    def remove(self, path: str) -> None: ...
+    def lock(self) -> AbstractContextManager[None]: ...
+
+
+class Clock(Protocol):
+    def now(self) -> datetime: ...
+
+
+class IdSource(Protocol):
+    def new(self) -> str: ...
+
+
+class MetadataReader(Protocol):
+    version: str
+    def read(self, path: str) -> dict: ...
