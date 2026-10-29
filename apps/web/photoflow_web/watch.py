@@ -46,14 +46,18 @@ class Reconciler(FileSystemEventHandler):
                 row = db.execute(
                     "SELECT stamp FROM photos WHERE path=?", (path[:-11],)
                 ).fetchone()
-            if row and p.exists():
+            if not p.exists():
+                return row is not None
+            if row:
                 stat = p.stat()
                 return row[0] != str(stat.st_mtime_ns) + ":" + str(stat.st_size)
-        elif p.exists() and not path.endswith(".json"):
+        elif not path.endswith(".json"):
             with self.library.db() as db:
                 row = db.execute(
                     "SELECT data FROM photos WHERE path=?", (path,)
                 ).fetchone()
+            if not p.exists():
+                return row is not None
             if row:
                 signature = json.loads(row[0])["file"].get("fingerprint")
                 return signature != self.library.fs.stat(path).to_dict()

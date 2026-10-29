@@ -470,6 +470,22 @@ class Library:
             if copies and not d.get("duplicate_of"):
                 keeper = min(copies, key=lambda x: x["record_id"])
                 keeper.pop("duplicate_of", None)
+                import copy
+
+                by_source = {
+                    source["source_id"]: source for source in keeper["sources"]
+                }
+                for source in d["sources"]:
+                    if source["source_id"] not in by_source:
+                        inherited = copy.deepcopy(source)
+                        keeper["sources"].append(inherited)
+                        by_source[source["source_id"]] = inherited
+                    else:
+                        existing = by_source[source["source_id"]]["documents"]
+                        for document in source["documents"]:
+                            if document not in existing:
+                                existing.append(copy.deepcopy(document))
+                keeper["resolved"] = resolve(Record(keeper))
                 for x in copies:
                     if x is not keeper:
                         x["duplicate_of"] = {

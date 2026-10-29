@@ -231,3 +231,49 @@ class LibraryTests(unittest.TestCase):
                 pass
         self.assertEqual(p.read_bytes(), b'{"new":true}')
         self.assertTrue(manifest.exists())
+
+    def test_trashing_keeper_preserves_sources_without_copying_overrides(self):
+        from PIL import Image
+        from photoflow.adapters import NoEmbeddedMetadata, RandomIds, SystemClock
+        from photoflow.runner import Runner, Config
+        import json
+
+        (self.root / "inbox").mkdir()
+        for name, person in [("one.jpg", "One"), ("two.jpg", "Two")]:
+            Image.new("RGB", (10, 10), "blue").save(self.root / "inbox" / name)
+            (self.root / "inbox" / (name + ".supplemental-metadata.json")).write_text(
+                json.dumps({"people": [{"name": person}]})
+            )
+        result = Runner(
+            self.lib.fs,
+            SystemClock(),
+            RandomIds(),
+            NoEmbeddedMetadata(),
+            Config(settle_seconds=0),
+        ).run()
+        self.assertEqual(result.errors, [])
+        self.lib.rebuild()
+        canonical = self.lib.listing()["items"][0]
+        keeper = self.lib.metadata(
+            canonical["id"], canonical["revision"], {"favorite": True}, [], "test"
+        )
+        self.lib.trash(keeper["record_id"], keeper["revision"], "test")
+        remaining = self.lib.listing()["items"][0]
+        survivor = self.lib.get(remaining["id"])
+        self.assertEqual(survivor["resolved"]["people"], ["One", "Two"])
+        self.assertEqual(len(survivor["sources"]), 2)
+        self.assertNotIn("favorite", survivor["overrides"])
+
+    def test_watcher_ignores_completed_moves_but_not_missing_indexed_files(self):
+        from photoflow_web.watch import Reconciler
+
+        watcher = Reconciler(self.lib, lambda: None)
+        self.assertFalse(watcher.meaningful("photos/already-moved.jpg"))
+        self.assertFalse(watcher.meaningful("photos/already-moved.jpg.photo.json"))
+        with self.lib.db() as db:
+            db.execute(
+                "INSERT INTO photos VALUES(?,?,?,?,?)",
+                ("test", "photos/missing.jpg", "rev", "{}", "stamp"),
+            )
+        self.assertTrue(watcher.meaningful("photos/missing.jpg"))
+        self.assertTrue(watcher.meaningful("photos/missing.jpg.photo.json"))

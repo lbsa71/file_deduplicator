@@ -278,7 +278,7 @@ upload/download, metadata editing, manual organization, folder operations,
 trash/restore and rescan workflows. The complete web specification remains the
 release target; not every acceptance gate or advanced job/cache feature is done.
 
-Validation: 108 existing service tests, 12 web/storage/auth scenarios, actual
+Validation: 108 existing service tests, 14 web/storage/auth scenarios, actual
 PAM positive/negative checks, a real authenticated HTTPS library/thumbnail/download
 check, desktop/mobile Chromium smoke tests, and full real-PAM/API CRUD on a synthetic
 exFAT scratch library. Live media was not used for
