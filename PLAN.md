@@ -286,6 +286,9 @@ review UI are later work, not hidden dependencies of this first service.
       the installed `photoflow` command.
 - [x] Add root setup/test commands and reserve `apps/web/` for the photo-library
       GUI. Each application owns its dependencies and deployment lifecycle.
+- [x] Author the [web specification](apps/web/spec/README.md): timeline/folders,
+      uploads/downloads, metadata CRUD, trash/restore, Linux/PAM roles, multilevel
+      thumbnails, HTTP contracts, jobs, consistency, and TDD delivery gates.
 - [ ] Implement the web application and its server API. Keep filesystem access
       on the server and route mutations through the existing coordinator and
       lock. Preserve sidecar metadata as the source of truth.

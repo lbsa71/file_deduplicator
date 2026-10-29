@@ -4,6 +4,10 @@ This directory is reserved for the web application. The GUI and its framework
 are not implemented yet. Its dependencies, tests, and deployment configuration
 will live here independently of the Python ingestion service.
 
+The [complete first-release specification](spec/README.md) defines the UI flows,
+filesystem and metadata contracts, Linux/PAM login, multilevel thumbnails, HTTP
+API, jobs, deployment, and TDD acceptance criteria. Start there for implementation.
+
 The initial GUI should browse library records and their aggregated dates,
 people, albums, descriptions, and original filenames, including retained
 duplicate relationships.

@@ -46,7 +46,8 @@ For module execution without installation, first `cd apps/photoflow`.
 ## Applications
 
 - [PhotoFlow service](apps/photoflow/README.md): working Python batch processor.
-- [Web GUI](apps/web/README.md): application boundary and planned integration.
+- [Web GUI specification](apps/web/spec/README.md): UI, API, storage, Linux login,
+  thumbnails, background work, and first-release acceptance criteria.
 - [Plan](PLAN.md): design decisions, completed validation, and follow-on work.
 
 Photo libraries are runtime data outside this repository. Existing library
