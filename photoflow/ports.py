@@ -4,7 +4,7 @@ from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import BinaryIO, Protocol
 
-from .model import Signature
+from .model import Inventory, Signature
 
 
 class BusyError(Exception):
@@ -16,6 +16,7 @@ class ChangedError(Exception):
 
 
 class FileSystem(Protocol):
+    def inventory(self, prefix: str = '') -> Inventory: ...
     def list_files(self, prefix: str = '') -> tuple[str, ...]: ...
     def list_directories(self) -> tuple[str, ...]: ...
     def remove_empty_directory(self, path: str) -> bool: ...

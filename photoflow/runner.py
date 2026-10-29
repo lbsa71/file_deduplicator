@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from .content import fingerprint
-from .model import MARKER, PENDING, SIDECAR, Record, Summary, WorkItem, input_key, protected_directory, timestamp
+from .model import MARKER, PENDING, SIDECAR, Record, Summary, WorkItem, encoded, input_key, protected_directory, timestamp
 from .moves import MoveJournal
 from .metadata import SourceCatalog
 from .ports import BusyError, ChangedError
@@ -37,17 +37,20 @@ class Config:
 
 
 class Context:
-    def __init__(self, fs, clock, ids, reader, config, summary, library_id, inventory):
+    def __init__(self, fs, clock, ids, reader, config, summary, library_id, snapshot):
         self.fs, self.clock, self.ids, self.reader = fs, clock, ids, reader
         self.config, self.summary, self.library_id = config, summary, library_id
-        self.inventory = frozenset(inventory)
-        self.sources = SourceCatalog(fs, self.inventory)
+        self.inventory = frozenset(snapshot.files)
+        self.observations = snapshot.signatures
+        self.sources = SourceCatalog(fs, self.inventory, library_id, verify=config.verify, summary=summary)
+        self.dirty = set()
         self.used_documents = set()
         self.reconciled_sidecars = {}
         self.moves = MoveJournal(fs, ids, library_id)
         self.pending_failure = False
 
     def event(self, record, event_type, **data):
+        self.dirty.add(record.id)
         history = record.data['history']
         history.append({'seq': len(history) + 1, 'event_id': self.ids.new(),
                         'run_id': self.summary.run_id, 'at': timestamp(self.clock.now()),
@@ -73,8 +76,10 @@ class Context:
     def persist(self, item):
         if self.config.dry_run:
             return
-        raw = item.record.to_bytes()
         target = item.path + SIDECAR
+        if item.saved is not None and item.sidecar_path == target and item.record.id not in self.dirty:
+            return
+        raw = item.record.to_bytes()
         if item.sidecar_path != target:
             item.record = self.moves.prepare(item.record, item.path, item.path, item.sidecar_path)
             item.sidecar_path = target
@@ -87,6 +92,7 @@ class Context:
                     raise ValueError(f'sidecar collision at {target}')
             self.fs.atomic_write(target, raw, replace=exists)
             item.saved = raw
+        self.dirty.discard(item.record.id)
 
 
 def discover(ctx):
@@ -112,7 +118,7 @@ def discover(ctx):
     assigned, items, orphans = set(), [], []
 
     def attach(sidecar, record, raw, media, verified=False):
-        observed = fs.stat(media)
+        observed = ctx.observations[media]
         old = record.path
         if old != media or sidecar != media + SIDECAR:
             if not verified and (not record.sha or fingerprint(fs, media, observed)[0] != record.sha):
@@ -171,7 +177,7 @@ def discover(ctx):
     for path in sorted(candidates - assigned - blocked):
         record = Record.create(ctx.ids.new(), ctx.library_id, path)
         ctx.event(record, 'discovered', path=path)
-        items.append(WorkItem(record, fs.stat(path), path + SIDECAR))
+        items.append(WorkItem(record, ctx.observations[path], path + SIDECAR))
     return tuple(sorted(items, key=lambda item: item.path))
 
 
@@ -196,7 +202,7 @@ class Runner:
         self.stages = tuple(stages)
 
     def run(self):
-        result = Summary(self.ids.new())
+        result = Summary(self.ids.new(), started_at=timestamp(self.clock.now()))
         try:
             if not self.fs.exists(MARKER):
                 raise ValueError('library marker missing; initialize the intended library with photoflow init ROOT')
@@ -215,9 +221,10 @@ class Runner:
                     if not self.config.move_files and self.fs.list_files(PENDING):
                         raise ValueError('pending operations need recovery; run without --no-move first')
                     result.recovered = moves.recover()
-                directories = self.fs.list_directories() if self.config.move_files and not self.config.dry_run else ()
-                inventory = self.fs.list_files()
-                ctx = Context(self.fs, self.clock, self.ids, self.reader, self.config, result, library_id, inventory)
+                snapshot = self.fs.inventory()
+                directories = snapshot.directories if self.config.move_files and not self.config.dry_run else ()
+                inventory = snapshot.files
+                ctx = Context(self.fs, self.clock, self.ids, self.reader, self.config, result, library_id, snapshot)
                 batch = discover(ctx)
                 result.discovered = len(batch)
                 for stage in self.stages:
@@ -244,8 +251,14 @@ class Runner:
                         result.warnings.append(f'unmatched_source_metadata: {path}')
                 if not result.errors and not result.deferred:
                     prune_empty_directories(self.fs, directories, result)
+                result.completed_at = timestamp(self.clock.now())
+                if not self.config.dry_run and not result.errors and not result.deferred:
+                    ctx.sources.save()
+                    self.fs.atomic_write('.photoflow/last-run.json', encoded(result.to_dict()))
         except BusyError:
             result.locked = True
         except (OSError, ValueError, ChangedError, TypeError, KeyError) as error:
             result.errors.append(str(error))
+        if result.completed_at is None:
+            result.completed_at = timestamp(self.clock.now())
         return result

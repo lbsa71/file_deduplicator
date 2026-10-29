@@ -58,6 +58,13 @@ class Signature:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class Inventory:
+    files: tuple[str, ...]
+    directories: tuple[str, ...]
+    signatures: dict[str, Signature]
+
+
 @dataclass
 class Record:
     data: dict
@@ -198,6 +205,8 @@ class WorkItem:
 @dataclass
 class Summary:
     run_id: str
+    started_at: str | None = None
+    completed_at: str | None = None
     discovered: int = 0
     processed: int = 0
     hashed: int = 0
@@ -211,6 +220,10 @@ class Summary:
     warnings: list = field(default_factory=list)
     proposals: list = field(default_factory=list)
     removed_directories: list = field(default_factory=list)
+    source_cache_hits: int = 0
+    source_cache_misses: int = 0
+    source_cache_writes: int = 0
+    io: dict = field(default_factory=dict)
 
     def to_dict(self):
         return asdict(self)

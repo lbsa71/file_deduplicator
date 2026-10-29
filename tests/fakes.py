@@ -4,7 +4,7 @@ from dataclasses import replace
 from uuid import UUID
 from pathlib import PurePosixPath
 
-from photoflow.model import APPLICATION_STATE, Signature, auxiliary_name, protected_directory, relative_path
+from photoflow.model import APPLICATION_STATE, Inventory, Signature, auxiliary_name, protected_directory, relative_path
 from photoflow.ports import BusyError
 
 
@@ -65,11 +65,20 @@ class MemoryFS:
         self.data[path] = data
         self.signatures[path] = Signature(len(data), self.tick, self.tick, 1, self.tick)
 
-    def list_files(self, prefix=''):
+    def inventory(self, prefix=''):
         files = [path for path in self.data if not any(auxiliary_name(part) for part in PurePosixPath(path).parts)]
+        directories = [path for path in self.directories if not any(auxiliary_name(part) for part in PurePosixPath(path).parts)]
         if prefix:
-            return tuple(sorted(p for p in files if p.startswith(prefix + '/')))
-        return tuple(sorted(p for p in files if not (set(PurePosixPath(p).parts) & APPLICATION_STATE)))
+            files = [p for p in files if p.startswith(prefix + '/')]
+            directories = [p for p in directories if p.startswith(prefix + '/')]
+        else:
+            files = [p for p in files if not protected_directory(p)]
+            directories = [p for p in directories if not protected_directory(p)]
+        return Inventory(tuple(sorted(files)), tuple(sorted(directories)),
+                         {p: self.signatures[p] for p in files})
+
+    def list_files(self, prefix=''):
+        return self.inventory(prefix).files
 
     def exists(self, path):
         return path in self.data or path in self.directories
@@ -85,7 +94,7 @@ class MemoryFS:
             self.directories.add(name)
 
     def list_directories(self):
-        return tuple(sorted(path for path in self.directories if not protected_directory(path)))
+        return self.inventory().directories
 
     def remove_empty_directory(self, path):
         relative_path(path)

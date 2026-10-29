@@ -89,8 +89,12 @@ Each `<media>.photo.json` contains:
   changes, including discovery, verification, metadata changes, duplicates,
   reconciliation, planned/completed moves, and failures.
 
-`last_scanned_at` and `last_processed_at` track routine observations without
-growing history on every unchanged pass. `--audit-every-scan` adds scan events.
+An unchanged pass leaves the entire photo sidecar untouched. Its
+`last_scanned_at` is the most recent observation published with a substantive
+record change; `last_processed_at` records the last published processing state.
+`.photoflow/last-run.json` records the latest successful writable pass's start,
+completion, and record counts. Failed/deferred results remain available in the
+command output. `--audit-every-scan` explicitly persists per-file scan events.
 Search covers original filenames as aliases, plus resolved dates, people,
 albums, and descriptions. It also searches review records.
 
@@ -162,13 +166,28 @@ Every pass scans the entire configured library root, including `inbox`,
 `photos`, `undated`, and `review`. The inbox has no separate scanning behavior;
 it is an ordinary folder whose media will be placed elsewhere.
 
-Stages run across the whole batch in order. New arrivals wait for the next pass;
+One filesystem walk collects file paths, initial stat signatures, and directory
+candidates together. Pending-operation recovery scans its own small state
+directory separately. Stages run across the whole batch in order. New arrivals wait for the next pass;
 a move updates the existing queue item. Stat signatures cache hashes; `--verify`
 forces full hashing to detect changes hidden behind unchanged stat information.
 Reads and moves recheck source stability. Embedded extraction is keyed by
 content hash and reader version; imported JSON and overrides independently
 invalidate resolution. Scan timestamps and placement changes do not invalidate
-embedded extraction. Shared album JSON is indexed/read once per pass.
+embedded extraction. Sidecars are serialized and saved only when an event or
+checkpoint changes their state; timestamp-only observations cause no writes.
+Stages must emit `Context.event` or `Context.complete` for record mutations.
+Checkpoint writes remain durable between stages and extraction batches.
+
+Imported JSON is cached between passes under `.photoflow/source-cache/` in up to
+256 small shards. A hit requires an unchanged complete stat signature, matching
+library/schema identity, and a valid cached-payload checksum. Source stability
+is rechecked around lookups. Changed files are reread; unknown fields and prior
+source revisions remain preserved. Corrupt caches produce warnings and rebuild
+from originals. Cache files are disposable and never replace the source JSON or
+managed records. Only changed shards are rewritten. `--verify` bypasses both
+media-hash and imported-JSON stat caches; previews never save caches or reports.
+Shared source/album JSON is still read at most once per pass when a read is due.
 Embedded metadata reads use batches of up to 64 dirty files per ExifTool
 process. Failed batches fall back to individual reads, and changed files cannot
 reuse prepared metadata. Metadata checkpoints are saved after each batch so an
@@ -242,6 +261,22 @@ preview. Root identity and complete enumeration are checked before processing.
 The command emits JSON: exit 0 means a completed/locked pass, exit 1 means
 reported processing errors, and exit 2 means CLI/setup failure. Warnings include
 deferred files and unmatched source metadata.
+
+Use `--stats` for access counters and elapsed time:
+
+```bash
+python3 -m photoflow run /path/to/PhotoLibrary --exiftool --stats
+```
+
+The summary includes source-cache hits, misses, and shard writes. With `--stats`,
+`io` also reports inventory calls and entries, explicit stat/existence calls,
+read opens/calls/bytes by media, sidecar, source JSON, and application state,
+atomic writes and payload bytes, moves, and empty-directory removal attempts.
+These measure the filesystem port, including the single successful-run report
+write. They exclude adapter-internal path checks, ExifTool's own file access,
+kernel syscall counts, and physical device I/O. Every pass still inventories
+the whole library and reads its managed sidecars. Conservative stat changes on
+exFAT can cause rehashes even when file bytes have not changed.
 
 ## Run periodically
 

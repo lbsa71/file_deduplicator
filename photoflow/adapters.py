@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
-from .model import APPLICATION_STATE, STATE, Signature, auxiliary_name, protected_directory, relative_path
+from .model import APPLICATION_STATE, STATE, Inventory, Signature, auxiliary_name, protected_directory, relative_path
 from .ports import BusyError
 
 
@@ -61,40 +61,19 @@ class LocalFileSystem:
                 raise ValueError(f'symlinks are not managed: {path}')
         return result
 
-    def list_files(self, prefix=''):
+    def inventory(self, prefix=''):
         start = self.native_path(prefix) if prefix else self.root
         if not start.exists():
-            return ()
-        paths = []
-        def fail(error):
-            raise error
-        for directory, dirs, files in os.walk(start, followlinks=False, onerror=fail):
-            dirs[:] = sorted(d for d in dirs if not auxiliary_name(d)
-                             and not (Path(directory) / d).is_symlink()
-                             and not (not prefix and d in APPLICATION_STATE))
-            for name in sorted(files):
-                if auxiliary_name(name):
-                    continue
-                file = Path(directory) / name
-                if file.is_symlink():
-                    continue
-                if stat.S_ISREG(file.stat(follow_symlinks=False).st_mode):
-                    paths.append(file.relative_to(self.root).as_posix())
-        return tuple(sorted(paths))
-
-    def exists(self, path):
-        return self.native_path(path).exists()
-
-    def list_directories(self):
-        paths = []
+            return Inventory((), (), {})
+        paths, directories, signatures = [], [], {}
         device = self.root.stat().st_dev
         def fail(error):
             raise error
-        for directory, dirs, _ in os.walk(self.root, followlinks=False, onerror=fail):
+        for directory, dirs, files in os.walk(start, followlinks=False, onerror=fail):
             allowed = []
             for name in sorted(dirs):
                 child = Path(directory) / name
-                if name in APPLICATION_STATE or auxiliary_name(name) or child.is_symlink():
+                if auxiliary_name(name) or (not prefix and name in APPLICATION_STATE) or child.is_symlink():
                     continue
                 try:
                     info = child.stat(follow_symlinks=False)
@@ -102,9 +81,29 @@ class LocalFileSystem:
                     continue
                 if stat.S_ISDIR(info.st_mode) and info.st_dev == device:
                     allowed.append(name)
-                    paths.append(child.relative_to(self.root).as_posix())
+                    directories.append(child.relative_to(self.root).as_posix())
             dirs[:] = allowed
-        return tuple(sorted(paths))
+            for name in sorted(files):
+                if auxiliary_name(name):
+                    continue
+                file = Path(directory) / name
+                value = file.stat(follow_symlinks=False)
+                if not stat.S_ISREG(value.st_mode):
+                    continue
+                path = file.relative_to(self.root).as_posix()
+                paths.append(path)
+                signatures[path] = Signature(value.st_size, value.st_mtime_ns, value.st_ctime_ns,
+                                             value.st_dev, value.st_ino)
+        return Inventory(tuple(sorted(paths)), tuple(sorted(directories)), signatures)
+
+    def list_files(self, prefix=''):
+        return self.inventory(prefix).files
+
+    def exists(self, path):
+        return self.native_path(path).exists()
+
+    def list_directories(self):
+        return self.inventory().directories
 
     def remove_empty_directory(self, path):
         relative_path(path)

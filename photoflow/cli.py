@@ -4,10 +4,12 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 
 from . import __version__
 from .adapters import ExifToolReader, LocalFileSystem, NoEmbeddedMetadata, RandomIds, SystemClock
 from .model import MARKER, SIDECAR, Record, encoded
+from .metrics import MeteredFileSystem
 from .runner import Config, MEDIA_EXTENSIONS, Runner
 
 
@@ -29,6 +31,7 @@ def parser():
     run.add_argument('--expect-library-id', help='refuse to run against another library')
     run.add_argument('--extensions', help='comma-separated suffixes, overriding the default media list')
     run.add_argument('--exiftool', action='store_true', help='extract embedded metadata using installed ExifTool')
+    run.add_argument('--stats', action='store_true', help='include filesystem access counters and elapsed time')
     search = commands.add_parser('search', help='search original names and resolved metadata without writing')
     search.add_argument('root')
     search.add_argument('query')
@@ -93,8 +96,14 @@ def main(argv=None):
                         verify=args.verify, settle_seconds=args.settle_seconds,
                         audit_every_scan=args.audit_every_scan, duplicates=args.duplicates,
                         expected_library_id=args.expect_library_id, extensions=extensions)
+        started = time.perf_counter()
+        if args.stats:
+            fs = MeteredFileSystem(fs)
         reader = ExifToolReader(fs) if args.exiftool else NoEmbeddedMetadata()
         result = Runner(fs, SystemClock(), RandomIds(), reader, config).run()
+        if args.stats:
+            result.io = fs.stats()
+            result.io['elapsed_seconds'] = round(time.perf_counter() - started, 6)
         print(encoded(result.to_dict()).decode(), end='')
         return 1 if result.errors else 0
     except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:

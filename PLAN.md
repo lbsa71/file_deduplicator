@@ -229,6 +229,44 @@ inventory remained unchanged. Its report is
 `.photoflow/runs/empty-directory-cleanup.json`; folders containing original JSON
 or Finder metadata remain available.
 
+### Incremental-run optimizations and access statistics
+
+- [x] Write photo sidecars only for event/checkpoint changes. Routine scan and
+      completion timestamps no longer force writes or serialization. Publish
+      one `.photoflow/last-run.json` for successful writable passes; keep
+      explicit per-file audit events available through `--audit-every-scan`.
+- [x] Persist disposable source-JSON cache shards keyed by complete stat
+      signatures, library/schema identity, and payload checksums. Recheck source
+      stability, rebuild corrupt caches from originals, preserve revisions,
+      and bypass caches under `--verify`. Previews write no state.
+- [x] Collect file paths, directory candidates, and initial file signatures in
+      one filesystem walk; reuse the initial signatures during discovery.
+- [x] Add `--stats` for filesystem-port calls, categorized read opens and bytes,
+      writes and payload sizes, inventory entries, cleanup attempts, and elapsed
+      time. Keep physical-device and kernel-syscall claims outside these counts.
+- [x] Use failing behavioral tests first, including unchanged byte-for-byte
+      sidecars, cache invalidation/corruption, a source changing during a cache
+      lookup, read-only behavior, combined scans, and counter accuracy. All 108
+      repository tests and seven actual-USB storage contracts pass.
+
+Two normal writable passes on `/mnt/usb/PhotoLibrary` processed all 24,283
+records without errors, deferrals, extraction, or moves. The cache-building
+pass took 104.41 seconds, refreshed 1,468 changed filesystem signatures, and
+populated 256 shards. The following unchanged pass took 52.60 seconds and used
+16,020 source-cache hits. It performed one inventory walk, no media-content
+opens, hashes, sidecar writes, or cache-shard writes, and one 81,094-byte
+successful-run report write. One existing empty, invalid JSON file was reopened
+and retried; it contributes zero payload bytes and remains unmatched.
+
+The unchanged pass read 24,283 sidecars (444,379,720 bytes) and 257 application
+state files (22,042,836 bytes), issued 150,801 explicit stat calls and 257
+existence calls, and attempted 6,343 empty-directory removals without removing
+anything. The single inventory contained 65,036 files and 6,344 directories;
+pending-state enumeration is separate. Counters exclude adapter-internal path
+checks and physical device I/O. Verification confirmed an unchanged complete
+file inventory, all record IDs/hashes/sizes matching the sealed baseline, and
+zero pending operations. Reports are in `.photoflow/runs/optimizations/`.
+
 ## Follow-on layers
 
 Keep exact matches, alternate encodings, visually similar photos, and related

@@ -9,6 +9,8 @@ from pathlib import PurePosixPath
 
 from .model import input_key
 from .content import stable
+from .ports import ChangedError
+from .source_cache import SourceCache
 
 RESOLVER_VERSION = 'takeout-and-exif-v1'
 
@@ -25,10 +27,12 @@ def read_document(fs, path, kind):
 
 
 class SourceCatalog:
-    """A per-pass index; shared album JSON is read once, not once per image."""
+    """Per-pass association index backed by disposable source-document caches."""
 
-    def __init__(self, fs, inventory):
+    def __init__(self, fs, inventory, library_id, *, verify, summary):
         self.fs, self.inventory = fs, inventory
+        self.verify, self.summary = verify, summary
+        self.cache = SourceCache(fs, library_id, summary)
         self.documents, self.titles = {}, {}
         self.by_parent = defaultdict(list)
         for path in sorted(inventory):
@@ -38,8 +42,23 @@ class SourceCatalog:
     def read(self, path, kind):
         key = (path, kind)
         if key not in self.documents:
-            self.documents[key] = read_document(self.fs, path, kind)
+            before = self.fs.stat(path)
+            cached = None if self.verify else self.cache.get(path, before)
+            if cached is not None:
+                stable(self.fs, path, before)
+                self.summary.source_cache_hits += 1
+                self.documents[key] = {'kind': kind, 'relative_path': path, **cached}
+            else:
+                self.summary.source_cache_misses += 1
+                document = read_document(self.fs, path, kind)
+                if self.fs.stat(path) != before:
+                    raise ChangedError(f'source JSON changed during processing: {path}')
+                self.cache.put(path, before, document)
+                self.documents[key] = document
         return self.documents[key]
+
+    def save(self):
+        self.cache.save()
 
     def matching_titles(self, parent, title):
         if parent not in self.titles:
