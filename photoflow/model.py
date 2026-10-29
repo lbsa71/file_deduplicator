@@ -18,6 +18,11 @@ def auxiliary_name(name: str) -> bool:
     return name.startswith(('._', '.photoflow-tmp-')) or name in ('.DS_Store', '.AppleDouble', '__MACOSX')
 
 
+def protected_directory(path: str) -> bool:
+    return any(part in APPLICATION_STATE or auxiliary_name(part)
+               for part in PurePosixPath(path).parts)
+
+
 def relative_path(value: str, *, media: bool = False) -> str:
     if not isinstance(value, str) or not value or '\\' in value or '\x00' in value:
         raise ValueError('expected a nonempty POSIX relative path')
@@ -205,6 +210,7 @@ class Summary:
     errors: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
     proposals: list = field(default_factory=list)
+    removed_directories: list = field(default_factory=list)
 
     def to_dict(self):
         return asdict(self)

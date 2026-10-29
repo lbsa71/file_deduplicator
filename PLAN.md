@@ -21,7 +21,8 @@ small enough to understand and extend without a workflow framework.
 4. Observe readiness; fingerprint content; import and resolve metadata; match
    duplicates; reserve destinations; execute journaled moves. Persist current
    state and audit history together through one coordinator.
-5. Emit a structured summary and exit. Cron or a systemd timer supplies repetition.
+5. Prune empty directories after a successful placement pass, emit a structured
+   summary, and exit. Cron or a systemd timer supplies repetition.
 
 ## Data and policy
 
@@ -205,6 +206,29 @@ is retained: 424 files are byte-identical to documents already embedded, 211
 contain distinct unmatched metadata, and one is invalid JSON. Ambiguous
 numbered variants remain separate rather than receiving guessed associations.
 
+### Archiving and empty-directory cleanup
+
+- [x] Move the three top-level `Foton*` trees to `/mnt/usb/Backup` with
+      no-overwrite directory renames. Verify all 4,684 file paths, sizes, and
+      modification times after relocation. Save the original-to-backup mapping
+      in `.photoflow/preparation/foton-backup-relocation.json`.
+- [x] Snapshot directory candidates before discovery and prune them bottom up
+      after successful placement. Preserve the root, inbox, application state,
+      nonempty directories, symlinks, other filesystems, and later arrivals.
+      Use `rmdir` only, report removed paths, and skip failed, deferred, preview,
+      and metadata-only passes. Cleanup errors are warnings.
+- [x] Validate the filesystem ports on real and in-memory adapters, including
+      a concurrent arrival between enumeration and removal. All 96 repository
+      tests and seven storage contracts on the USB volume pass. A real exFAT
+      scratch-library run removes only emptied directories and converges on
+      the next pass without hashes, extraction, moves, or additional pruning.
+
+The housekeeping pass checked all 24,283 library records with no errors or move
+proposals, then removed nine genuinely empty directories. The complete file
+inventory remained unchanged. Its report is
+`.photoflow/runs/empty-directory-cleanup.json`; folders containing original JSON
+or Finder metadata remain available.
+
 ## Follow-on layers
 
 Keep exact matches, alternate encodings, visually similar photos, and related
@@ -214,5 +238,5 @@ record normalization/tool versions. Add it as a stage using a proven decoder
 or tool; retain originals. Optional AI enrichment belongs behind a versioned
 adapter and must not block ingestion or override human decisions. RAW/JPEG and
 Live Photo relationships, XMP export, richer Takeout cross-part matching,
-completed-batch manifests, cross-filesystem transfers, retention/pruning, and a
+completed-batch manifests, cross-filesystem transfers, media retention/pruning, and a
 review UI are later work, not hidden dependencies of this first service.

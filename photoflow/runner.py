@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from .content import fingerprint
-from .model import MARKER, PENDING, SIDECAR, Record, Summary, WorkItem, input_key, timestamp
+from .model import MARKER, PENDING, SIDECAR, Record, Summary, WorkItem, input_key, protected_directory, timestamp
 from .moves import MoveJournal
 from .metadata import SourceCatalog
 from .ports import BusyError, ChangedError
@@ -175,6 +175,17 @@ def discover(ctx):
     return tuple(sorted(items, key=lambda item: item.path))
 
 
+def prune_empty_directories(fs, candidates, summary):
+    for path in sorted(candidates, key=lambda p: (p.count('/'), p), reverse=True):
+        if path == 'inbox' or protected_directory(path):
+            continue
+        try:
+            if fs.remove_empty_directory(path):
+                summary.removed_directories.append(path)
+        except (OSError, ValueError) as error:
+            summary.warnings.append(f'empty_directory_cleanup_failed: {path}: {error}')
+
+
 class Runner:
     def __init__(self, fs, clock, ids, reader, config=None, stages=None):
         self.fs, self.clock, self.ids, self.reader = fs, clock, ids, reader
@@ -204,6 +215,7 @@ class Runner:
                     if not self.config.move_files and self.fs.list_files(PENDING):
                         raise ValueError('pending operations need recovery; run without --no-move first')
                     result.recovered = moves.recover()
+                directories = self.fs.list_directories() if self.config.move_files and not self.config.dry_run else ()
                 inventory = self.fs.list_files()
                 ctx = Context(self.fs, self.clock, self.ids, self.reader, self.config, result, library_id, inventory)
                 batch = discover(ctx)
@@ -230,6 +242,8 @@ class Runner:
                 for path in sorted(set(inventory) - known - ctx.used_documents):
                     if path.endswith('.json') and not path.endswith(SIDECAR):
                         result.warnings.append(f'unmatched_source_metadata: {path}')
+                if not result.errors and not result.deferred:
+                    prune_empty_directories(self.fs, directories, result)
         except BusyError:
             result.locked = True
         except (OSError, ValueError, ChangedError, TypeError, KeyError) as error:

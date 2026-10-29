@@ -155,8 +155,12 @@ ExifTool, Takeout import, hashing, reconciliation, and placement still work.
 ```text
 lock → recover → inventory/reconcile → freeze queue
      → observe → fingerprint → extract/resolve → exact duplicates
-     → reserve locations → apply moves → summary
+     → reserve locations → apply moves → prune empty directories → summary
 ```
+
+Every pass scans the entire configured library root, including `inbox`,
+`photos`, `undated`, and `review`. The inbox has no separate scanning behavior;
+it is an ordinary folder whose media will be placed elsewhere.
 
 Stages run across the whole batch in order. New arrivals wait for the next pass;
 a move updates the existing queue item. Stat signatures cache hashes; `--verify`
@@ -185,6 +189,15 @@ and sidecars moved alone. Hash-based repairs require unambiguous associations;
 copied record IDs and ambiguous equal-byte candidates are reported. Missing
 media never causes metadata pruning. Destination reservation compares case and
 Unicode-normalized paths; actual moves also reject existing destinations.
+
+After a successful writable placement pass, empty directories seen at the start
+of the pass are removed from the bottom up. The library root, `inbox` itself,
+application state, Finder metadata directories, symlinks, and other filesystems
+are preserved. Only atomic `rmdir` is used: a folder containing source JSON,
+hidden files, or a newly arrived file stays intact. Folders created after the
+initial inventory wait for another pass. `removed_directories` lists removals
+in the JSON summary. Preview and metadata-only passes do not prune; processing
+errors or deferred files skip cleanup. Cleanup failures appear as warnings.
 
 ## Recovery and supported storage
 

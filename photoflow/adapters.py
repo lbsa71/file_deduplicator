@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
-from .model import APPLICATION_STATE, STATE, Signature, auxiliary_name, relative_path
+from .model import APPLICATION_STATE, STATE, Signature, auxiliary_name, protected_directory, relative_path
 from .ports import BusyError
 
 
@@ -84,6 +84,41 @@ class LocalFileSystem:
 
     def exists(self, path):
         return self.native_path(path).exists()
+
+    def list_directories(self):
+        paths = []
+        device = self.root.stat().st_dev
+        def fail(error):
+            raise error
+        for directory, dirs, _ in os.walk(self.root, followlinks=False, onerror=fail):
+            allowed = []
+            for name in sorted(dirs):
+                child = Path(directory) / name
+                if name in APPLICATION_STATE or auxiliary_name(name) or child.is_symlink():
+                    continue
+                try:
+                    info = child.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
+                if stat.S_ISDIR(info.st_mode) and info.st_dev == device:
+                    allowed.append(name)
+                    paths.append(child.relative_to(self.root).as_posix())
+            dirs[:] = allowed
+        return tuple(sorted(paths))
+
+    def remove_empty_directory(self, path):
+        relative_path(path)
+        if protected_directory(path):
+            raise ValueError(f'protected directory: {path}')
+        target = self.native_path(path)
+        try:
+            target.rmdir()
+        except OSError as error:
+            if error.errno in (errno.ENOTEMPTY, errno.EEXIST, errno.ENOENT, errno.ENOTDIR):
+                return False
+            raise
+        self._sync_dir(target.parent)
+        return True
 
     def stat(self, path):
         value = self.native_path(path).stat(follow_symlinks=False)

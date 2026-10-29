@@ -4,7 +4,7 @@ from dataclasses import replace
 from uuid import UUID
 from pathlib import PurePosixPath
 
-from photoflow.model import APPLICATION_STATE, Signature, auxiliary_name
+from photoflow.model import APPLICATION_STATE, Signature, auxiliary_name, protected_directory, relative_path
 from photoflow.ports import BusyError
 
 
@@ -44,6 +44,7 @@ class MetadataReader:
 class MemoryFS:
     def __init__(self):
         self.data = {}
+        self.directories = set()
         self.signatures = {}
         self.tick = 0
         self.on_read = None
@@ -55,6 +56,11 @@ class MemoryFS:
             self.fail_on(operation, path)
 
     def put(self, path, data):
+        if path in self.directories:
+            raise IsADirectoryError(path)
+        parent = PurePosixPath(path).parent.as_posix()
+        if parent != '.':
+            self.mkdir(parent)
         self.tick += 1
         self.data[path] = data
         self.signatures[path] = Signature(len(data), self.tick, self.tick, 1, self.tick)
@@ -66,7 +72,32 @@ class MemoryFS:
         return tuple(sorted(p for p in files if not (set(PurePosixPath(p).parts) & APPLICATION_STATE)))
 
     def exists(self, path):
-        return path in self.data
+        return path in self.data or path in self.directories
+
+    def mkdir(self, path):
+        relative_path(path)
+        for candidate in (PurePosixPath(path), *PurePosixPath(path).parents):
+            name = candidate.as_posix()
+            if name == '.':
+                continue
+            if name in self.data:
+                raise FileExistsError(name)
+            self.directories.add(name)
+
+    def list_directories(self):
+        return tuple(sorted(path for path in self.directories if not protected_directory(path)))
+
+    def remove_empty_directory(self, path):
+        relative_path(path)
+        if protected_directory(path):
+            raise ValueError(f'protected directory: {path}')
+        self._fault('rmdir', path)
+        if path not in self.directories:
+            return False
+        if any(p.startswith(path + '/') for p in self.data.keys() | self.directories):
+            return False
+        self.directories.remove(path)
+        return True
 
     def stat(self, path):
         return self.signatures[path]
@@ -91,6 +122,9 @@ class MemoryFS:
     def link(self, source, target):
         if target in self.data:
             raise FileExistsError(target)
+        parent = PurePosixPath(target).parent.as_posix()
+        if parent != '.':
+            self.mkdir(parent)
         self.data[target] = self.data[source]
         self.tick += 1
         signature = replace(self.signatures[source], ctime_ns=self.tick)
