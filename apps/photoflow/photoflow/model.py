@@ -232,6 +232,12 @@ class Summary:
 def destination(record: Record, duplicate_policy: str = 'review') -> str:
     extension = PurePosixPath(record.path).suffix.lower()
     name = record.id + extension
+    placement = record.data.get('placement', {})
+    if placement.get('mode') == 'manual':
+        folder = relative_path(placement['folder_path'])
+        if not folder.startswith('folders/'):
+            raise ValueError('manual placement requires a user folder')
+        return f'{folder}/{name}'
     duplicate = record.data.get('duplicate_of')
     if duplicate and duplicate_policy == 'review':
         return f"review/duplicates/{duplicate['record_id']}/{name}"

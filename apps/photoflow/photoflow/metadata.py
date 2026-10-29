@@ -33,6 +33,8 @@ class SourceCatalog:
         self.fs, self.inventory = fs, inventory
         self.verify, self.summary = verify, summary
         self.cache = SourceCache(fs, library_id, summary)
+        mapping = '.photoflow/source-relocations.json'
+        self.relocations = json.loads(fs.read_bytes(mapping)).get('items', []) if fs.exists(mapping) else []
         self.documents, self.titles = {}, {}
         self.by_parent = defaultdict(list)
         for path in sorted(inventory):
@@ -56,6 +58,20 @@ class SourceCatalog:
                 self.cache.put(path, before, document)
                 self.documents[key] = document
         return self.documents[key]
+
+    def current_path(self, path):
+        for relocation in self.relocations:
+            old, new = relocation['from'], relocation['to']
+            if path.startswith(old + '/'):
+                path = new + path[len(old):]
+        return path
+
+    def original_path(self, path):
+        for relocation in reversed(self.relocations):
+            old, new = relocation['from'], relocation['to']
+            if path.startswith(new + '/'):
+                path = old + path[len(new):]
+        return path
 
     def save(self):
         self.cache.save()
@@ -83,7 +99,8 @@ def import_sources(record, catalog):
     inventory = catalog.inventory
     for source in record.data['sources']:
         original = source['original_relative_path']
-        paths = [original]
+        current = catalog.current_path(original)
+        paths = [current]
         if record.path != original:
             paths.append(record.path)
         found = []
@@ -102,12 +119,16 @@ def import_sources(record, catalog):
                 if candidates:
                     found.append((candidates[0], 'takeout'))
             album_path = (parent / 'metadata.json').as_posix()
-            if album_path in inventory and media_path == original:
+            if album_path in inventory and media_path == current:
                 found.append((album_path, 'album'))
         for path, kind in dict.fromkeys(found):
-            doc = catalog.read(path, kind)
+            doc = copy.deepcopy(catalog.read(path, kind))
+            logical_path = catalog.original_path(path)
+            if logical_path != path:
+                doc['current_relative_path'] = path
+                doc['relative_path'] = logical_path
             used.add(path)
-            if not any((d['relative_path'], d['sha256'], d['kind']) == (path, doc['sha256'], kind)
+            if not any((d['relative_path'], d['sha256'], d['kind']) == (logical_path, doc['sha256'], kind)
                        for d in source['documents']):
                 source['documents'].append(copy.deepcopy(doc))
                 changed = True
@@ -178,7 +199,7 @@ def resolve(record):
                         add('people', person['name'], origin, 'people.name')
             if isinstance(raw.get('description'), str):
                 add('description', raw['description'], origin, 'description')
-    resolved = {'capture_time': None, 'people': [], 'albums': [], 'description': ''}
+    resolved = {'capture_time': None, 'people': [], 'albums': [], 'description': '', 'title': None, 'tags': [], 'favorite': False, 'location': None, 'display_rotation': 0}
     for field, assertions in provenance.items():
         if field in ('people', 'albums'):
             resolved[field] = sorted({a['value'] for a in assertions})
@@ -190,7 +211,7 @@ def resolve(record):
         if field == 'capture_time' and value is not None and valid_date(value) is None:
             raise ValueError('capture_time override must be an ISO date/time or null')
         resolved[field] = copy.deepcopy(value)
-        provenance[field].append({'value': copy.deepcopy(value), 'source': 'human', 'field': field})
+        provenance.setdefault(field, []).append({'value': copy.deepcopy(value), 'source': 'human', 'field': field})
     resolved['provenance'] = provenance
     return resolved
 

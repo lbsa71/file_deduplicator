@@ -1,0 +1,29 @@
+[Unit]
+Description=PhotoFlow photo library web service
+After=network.target photoflow-auth.service
+Requires=photoflow-auth.service
+RequiresMountsFor=/mnt/usb/PhotoLibrary
+[Service]
+User=photoflow-web
+Group=photoflow-web
+SupplementaryGroups=media
+Environment=PHOTOFLOW_LIBRARY=/mnt/usb/PhotoLibrary
+Environment=PHOTOFLOW_STATE=/var/lib/photoflow-web
+Environment=PATH=/opt/photoflow-exiftool:/opt/photoflow-web-venv/bin:/usr/bin:/bin
+ExecStart=/opt/photoflow-web-venv/bin/photoflow-web
+StateDirectory=photoflow-web
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=600
+NoNewPrivileges=true
+PrivateTmp=true
+IPAddressDeny=any
+IPAddressAllow=localhost
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/mnt/usb/PhotoLibrary
+MemoryMax=2G
+TasksMax=64
+UMask=0077
+[Install]
+WantedBy=multi-user.target

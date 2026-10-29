@@ -1,13 +1,13 @@
 # PhotoFlow monorepo
 
-Filesystem-first photo ingestion and a home for the photo-library web GUI.
+Filesystem-first photo ingestion and a local photo-library web application.
 The existing service preserves metadata, identifies exact duplicates, and
 organizes media using portable JSON records.
 
 ```text
 apps/
   photoflow/          Python service, tests, operational scripts, deployment
-  web/                Reserved for the photo-library web GUI
+  web/                React UI, Python API, PAM broker, media workers, deployment
 PLAN.md               Architecture decisions and implementation roadmap
 Makefile              Repository setup and validation commands
 ```
@@ -46,6 +46,8 @@ For module execution without installation, first `cd apps/photoflow`.
 ## Applications
 
 - [PhotoFlow service](apps/photoflow/README.md): working Python batch processor.
+- [PhotoFlow Web](apps/web/README.md): installed service, build instructions,
+  operational commands, and current implementation limits.
 - [Web GUI specification](apps/web/spec/README.md): UI, API, storage, Linux login,
   thumbnails, background work, and first-release acceptance criteria.
 - [Plan](PLAN.md): design decisions, completed validation, and follow-on work.

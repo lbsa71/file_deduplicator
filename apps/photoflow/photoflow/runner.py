@@ -176,6 +176,8 @@ def discover(ctx):
                 blocked.add(record.path)
     for path in sorted(candidates - assigned - blocked):
         record = Record.create(ctx.ids.new(), ctx.library_id, path)
+        if path.startswith('folders/'):
+            record.data['placement'] = {'mode': 'manual', 'folder_path': str(PurePosixPath(path).parent)}
         ctx.event(record, 'discovered', path=path)
         items.append(WorkItem(record, ctx.observations[path], path + SIDECAR))
     return tuple(sorted(items, key=lambda item: item.path))
@@ -183,7 +185,7 @@ def discover(ctx):
 
 def prune_empty_directories(fs, candidates, summary):
     for path in sorted(candidates, key=lambda p: (p.count('/'), p), reverse=True):
-        if path == 'inbox' or protected_directory(path):
+        if path == 'inbox' or path == 'folders' or path.startswith('folders/') or protected_directory(path):
             continue
         try:
             if fs.remove_empty_directory(path):
@@ -207,12 +209,15 @@ class Runner:
             if not self.fs.exists(MARKER):
                 raise ValueError('library marker missing; initialize the intended library with photoflow init ROOT')
             marker = json.loads(self.fs.read_bytes(MARKER))
-            if not isinstance(marker, dict) or marker.get('schema_version') != 1 or not isinstance(marker.get('library_id'), str):
+            if not isinstance(marker, dict) or marker.get('schema_version') not in (1, 2) or not isinstance(marker.get('library_id'), str):
                 raise ValueError('invalid library marker')
             library_id = marker['library_id']
             if not library_id or (self.config.expected_library_id and self.config.expected_library_id != library_id):
                 raise ValueError('library identity does not match the expected library')
             with nullcontext() if self.config.dry_run else self.fs.lock():
+                if marker.get('schema_version') == 2 and not self.config.dry_run:
+                    from .web_operations import recover
+                    recover(self.fs)
                 moves = MoveJournal(self.fs, self.ids, library_id)
                 if self.config.dry_run:
                     if self.fs.list_files(PENDING):

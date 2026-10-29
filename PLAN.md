@@ -269,6 +269,22 @@ zero pending operations. Reports are in `.photoflow/runs/optimizations/`.
 
 ## Follow-on layers
 
+### Web service initial deployment
+
+The initial web service is implemented and deployed under systemd, with an
+unprivileged API, separate PAM broker and HTTPS nginx listener. See the
+[web runbook and current limits](apps/web/README.md). It supports the core browsing,
+upload/download, metadata editing, manual organization, folder operations,
+trash/restore and rescan workflows. The complete web specification remains the
+release target; not every acceptance gate or advanced job/cache feature is done.
+
+Validation: 108 existing service tests, 12 web/storage/auth scenarios, actual
+PAM positive/negative checks, a real authenticated HTTPS library/thumbnail/download
+check, desktop/mobile Chromium smoke tests, and full real-PAM/API CRUD on a synthetic
+exFAT scratch library. Live media was not used for
+mutation tests. The library marker migrated to format 2 with its original backed
+up so unsupported writers reject new placement/trash behavior.
+
 Keep exact matches, alternate encodings, visually similar photos, and related
 content as different relationships. Perceptual comparison must inspect all
 images independently of the exact-size sieve, preserve pairwise evidence, and

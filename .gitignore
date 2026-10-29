@@ -5,3 +5,5 @@ __pycache__/
 build/
 dist/
 .coverage
+node_modules/
+apps/web/photoflow_web/static/

@@ -1,0 +1,18 @@
+[Unit]
+Description=PhotoFlow Linux account authentication broker
+[Service]
+User=root
+Group=photoflow-web
+EnvironmentFile=/etc/photoflow-auth.env
+ExecStart=/opt/photoflow-web-venv/bin/photoflow-auth
+RuntimeDirectory=photoflow-auth
+RuntimeDirectoryMode=0750
+Restart=on-failure
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_UNIX
+UMask=0077
+[Install]
+WantedBy=multi-user.target
