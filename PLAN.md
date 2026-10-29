@@ -278,3 +278,19 @@ adapter and must not block ingestion or override human decisions. RAW/JPEG and
 Live Photo relationships, XMP export, richer Takeout cross-part matching,
 completed-batch manifests, cross-filesystem transfers, media retention/pruning, and a
 review UI are later work, not hidden dependencies of this first service.
+
+## Monorepo structure
+
+- [x] Move the existing Python service, tests, extraction scripts, packaging, and
+      deployment examples into `apps/photoflow/`, preserving Python imports and
+      the installed `photoflow` command.
+- [x] Add root setup/test commands and reserve `apps/web/` for the photo-library
+      GUI. Each application owns its dependencies and deployment lifecycle.
+- [ ] Implement the web application and its server API. Keep filesystem access
+      on the server and route mutations through the existing coordinator and
+      lock. Preserve sidecar metadata as the source of truth.
+- [ ] Extract shared code into `packages/` only when both applications need it;
+      choose the web framework when implementing the GUI.
+
+Repository reorganization does not change the photo library layout or record
+schema. The service guide is now `apps/photoflow/README.md`.
