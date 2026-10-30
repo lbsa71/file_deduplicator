@@ -1,10 +1,15 @@
 import { chromium } from "@playwright/test";
 const browser = await chromium.launch({
   headless: true,
-  args: ["--no-sandbox"],
+  args: [
+    "--no-sandbox",
+    ...(process.env.PHOTOFLOW_TEST_RESOLVE
+      ? ["--host-resolver-rules=" + process.env.PHOTOFLOW_TEST_RESOLVE]
+      : []),
+  ],
 });
 const page = await browser.newPage({
-  ignoreHTTPSErrors: true,
+  ignoreHTTPSErrors: process.env.PHOTOFLOW_TEST_INSECURE === "1",
   viewport: { width: 1440, height: 1000 },
 });
 const errors = [];

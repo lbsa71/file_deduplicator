@@ -1,10 +1,13 @@
 # PhotoFlow Web
 
 React photo browser and Python API backed by the existing PhotoFlow library.
-The Ubuntu installation is served at **https://192.168.1.4:8443/**. Sign in with
-an allowed Linux account's local password. This LAN installation uses a self-signed
-certificate; trust `/etc/photoflow-web/tls.crt` on your client or provision a trusted
-certificate before normal use outside this LAN.
+The public installation is served at **https://photos.lbsa71.net/** through the
+existing Cloudflare Tunnel, with a publicly trusted HTTPS certificate. Sign in
+with an allowed Linux account's local password.
+
+The direct LAN address **https://192.168.1.4:8443/** remains available with its
+self-signed certificate. The public hostname does not require trusting that LAN
+certificate.
 
 The current application provides timeline/search/favorites/duplicate browsing,
 real folder navigation, multi-file uploads with resumable chunks, original and
@@ -39,6 +42,28 @@ checkout or `/opt/photoflow-web-venv/bin/photoflow`; older binaries refuse forma
 The migration itself does not reorganize media. Do not downgrade the marker after
 using manual placement/trash. Recover web intents with the updated writer.
 
+## Public Cloudflare route
+
+`cloudflared.service` uses `/etc/cloudflared/config.yml`. The existing `home-media`
+tunnel also serves `photos.lbsa71.net` using `http://127.0.0.1:8091` as the origin.
+The nginx origin template is [deploy/nginx-cloudflared.conf](deploy/nginx-cloudflared.conf).
+It is bound only to loopback, sets the public Host/HTTPS scheme for CSRF checks,
+and accepts Cloudflare's client IP only from the local tunnel connector. Login
+throttling uses that client IP, with an additional nginx rate limit. Public
+responses are marked private/no-store, including authentication failures and
+protected media.
+
+The Cloudflare DNS route points at the existing tunnel. The added ingress rule
+precedes its final catch-all; the existing media/home-media routes are retained.
+The pre-change configuration is backed up at `/etc/cloudflared/config.yml.pre-photos`.
+Tunnel credentials and the account certificate remain outside this repository.
+The routing pattern follows Cloudflare's [local tunnel configuration](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/configuration-file/)
+and [DNS route documentation](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/).
+
+To remove public serving, remove the photos ingress and its DNS record, validate
+the config with `cloudflared tunnel ingress validate`, and restart cloudflared.
+Do not blindly restore the backup if other tunnel routes have changed since.
+
 ## Build, test, and update
 
 Use Python 3.11+ and Node 22 for development/browser tests. Install system ExifTool,
@@ -71,6 +96,10 @@ Browser smoke test: install Playwright's Chromium, then set
 `PHOTOFLOW_TEST_USER`, `PHOTOFLOW_TEST_PASSWORD`, and optionally `PHOTOFLOW_TEST_URL`
 in the process environment and run `node apps/web/ui/browser-smoke.mjs`. Use a
 scratch/test account; screenshots are written to `/tmp`, never committed.
+For direct-LAN tests only, set `PHOTOFLOW_TEST_INSECURE=1` for the self-signed
+certificate. Public-host tests validate certificates normally. The optional
+`PHOTOFLOW_TEST_RESOLVE` passes a Chromium host-resolution rule for testing a new
+DNS record before local negative caches expire; it does not disable TLS validation.
 
 ## Current limits and remaining specification work
 
