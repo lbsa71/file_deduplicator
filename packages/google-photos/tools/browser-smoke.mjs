@@ -1,8 +1,9 @@
 import { chromium } from "playwright";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { envelope, item, album, ACCOUNT } from "../test/fixtures.js";
 const extension = fileURLToPath(
@@ -34,7 +35,12 @@ try {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: envelope(rpc, data),
+        body: envelope(
+          rpc,
+          url.searchParams.get("probe") === "oversized"
+            ? ["x".repeat(1024 * 1024 + 1)]
+            : data,
+        ),
       });
     }
     if (url.pathname === "/upload") {
@@ -72,6 +78,18 @@ try {
         chrome.runtime.sendMessage({ action, tabId }),
       { action, tabId },
     );
+  async function waitForCapture(count) {
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      const status = await command("status");
+      assert.equal(status.ok, true);
+      if (status.result.count >= count) return;
+      await delay(25);
+    }
+    throw new Error(
+      `Capture did not reach ${count} entries before the deadline`,
+    );
+  }
   assert.equal((await command("identity")).result.account, ACCOUNT);
   assert.equal((await command("start")).ok, true);
   await page.evaluate(async () => {
@@ -97,10 +115,7 @@ try {
       body: "PRIVATE_MEDIA_BYTES",
     });
   });
-  await panel.waitForFunction(async () => {
-    const s = await chrome.runtime.sendMessage({ action: "status" });
-    return s.result.count >= 2;
-  });
+  await waitForCapture(2);
   const beforeRead = actualRequests;
   const read = await command("inventory");
   assert.equal(read.ok, true, JSON.stringify(read));
@@ -112,10 +127,7 @@ try {
     retentionReady: false,
   });
   assert.equal(actualRequests, beforeRead + 3);
-  await panel.waitForFunction(async () => {
-    const s = await chrome.runtime.sendMessage({ action: "status" });
-    return s.result.count >= 5;
-  });
+  await waitForCapture(5);
   await command("stop");
   const capture = (await command("export")).result.capture;
   assert.equal(capture.entries.length, 5);
@@ -126,13 +138,46 @@ try {
     5,
     "Recorder must never replay observed requests",
   );
+  // Exercise the actual popup download path, keeping the synthetic capture in
+  // this test's disposable profile directory.
+  const downloaded = panel.waitForEvent("download");
+  await panel.locator("#export").click();
+  const download = await downloaded;
+  const downloadPath = join(profile, "synthetic.capture.json");
+  await download.saveAs(downloadPath);
+  assert.deepEqual(JSON.parse(await readFile(downloadPath, "utf8")), capture);
+
+  // A bounded recording may observe the request yet omit the structured body.
+  // That is incomplete evidence, even when all observed HTTP requests succeed.
+  assert.equal((await command("start")).ok, true);
+  await page.evaluate(async () => {
+    await fetch("/_/PhotosUi/data/batchexecute?rpcids=VrseUb&probe=oversized", {
+      method: "POST",
+      body: new URLSearchParams({
+        "f.req": JSON.stringify([
+          [["VrseUb", '["synthetic-media"]', null, "generic"]],
+        ]),
+      }),
+    });
+  });
+  await waitForCapture(1);
+  await command("stop");
+  const omitted = (await command("export")).result.capture;
+  assert.equal(omitted.entries.length, 1);
+  assert.equal(omitted.complete, false);
+  assert.equal(omitted.entries[0].response.bodyOmitted, true);
+  assert.equal(typeof omitted.entries[0].response.captureError, "string");
+  assert.equal(actualRequests, 6, "An omitted body must not trigger a replay");
   console.log(
     JSON.stringify({
       browser: "Chromium",
+      browserVersion: context.browser().version(),
       captured: capture.entries.length,
       actualRequests,
       inventory: read.result,
       secretLeak: false,
+      downloadVerified: true,
+      oversizedCaptureComplete: omitted.complete,
     }),
   );
 } finally {

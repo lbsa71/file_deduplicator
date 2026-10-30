@@ -25,7 +25,9 @@ npm pack
 
 The browser test loads the actual extension in Chromium and intercepts every
 Google Photos request with a disposable fixture. It checks read-only inspection,
-sanitization, and that five observed requests produce exactly five network calls.
+sanitization, a capture downloaded through the popup, and that five observed
+requests produce exactly five network calls. A separate oversized-response probe
+must remain incomplete without replaying its request.
 There is no dependency on a signed-in account for these tests. Playwright is a
 pinned development dependency, not a runtime dependency.
 
@@ -111,6 +113,11 @@ DevTools. Detachment, limits and failed reads mark capture incompleteness.
 Sanitized results stay in extension session storage/memory until downloaded or
 the browser session ends; nothing is sent to PhotoFlow or another server.
 
+Missing, oversized or malformed RPC request bodies and omitted structured response
+bodies set `complete: false` with a generic `captureError`. Intentional binary-body
+omission still applies. Capture completeness covers admitted traffic only; it does
+not establish a complete account inventory or qualify a mutation transport.
+
 ### Existing debugging connection
 
 If a browser-management session provides a CDP connection, forward it securely
@@ -165,6 +172,11 @@ atomic JSON replacement, file/directory fsync, and mode-0600 records. Keep it on
 a local filesystem supporting those operations. A crash leaves a lock requiring
 operator investigation; it is never silently stolen. `MemoryJournal` is only a
 test/reference adapter, not suitable for production mutations.
+
+Native Windows journal qualification currently fails the private-directory check;
+do not disable that guard. Use a suitable POSIX filesystem or a separately qualified
+durable adapter. See the [browser qualification report](docs/qualification/2026-10-30-browser-session.md)
+for the observed Windows and Linux results.
 
 A lost acknowledgement or failed postcondition persists an unknown outcome and
 blocks later writes, including after restart. `executor.reconcile(id)` performs

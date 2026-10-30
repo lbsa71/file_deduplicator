@@ -244,10 +244,16 @@ export class PassiveRecorder {
         this.#complete = false;
         this.#pending.delete(id);
       }
-      this.#pending.set(id, {
-        at: this.#now(),
-        request: this.#sanitizer.request(params.request),
-      });
+      const capturedRequest = this.#sanitizer.request(params.request);
+      if (
+        url.pathname.endsWith("/batchexecute") &&
+        capturedRequest.bodyOmitted
+      ) {
+        capturedRequest.captureError =
+          "RPC request body unavailable or invalid";
+        this.#complete = false;
+      }
+      this.#pending.set(id, { at: this.#now(), request: capturedRequest });
       return;
     }
     const entry = this.#pending.get(id);
@@ -269,17 +275,25 @@ export class PassiveRecorder {
     this.#reading++;
     if (
       entry.response &&
-      /(json|javascript|text\/plain)/i.test(entry.response.mimeType ?? "") &&
-      params.encodedDataLength <= MAX_BODY
+      /(json|javascript|text\/plain)/i.test(entry.response.mimeType ?? "")
     ) {
-      try {
-        const body = await this.#send("Network.getResponseBody", {
-          requestId: id,
-        });
-        if (!body.base64Encoded)
-          entry.response = this.#sanitizer.response(entry.response, body.body);
-      } catch {
-        entry.response.captureError = "Response body unavailable";
+      if (params.encodedDataLength <= MAX_BODY) {
+        try {
+          const body = await this.#send("Network.getResponseBody", {
+            requestId: id,
+          });
+          if (!body.base64Encoded)
+            entry.response = this.#sanitizer.response(
+              entry.response,
+              body.body,
+            );
+        } catch {
+          entry.response.captureError = "Response body unavailable";
+        }
+      }
+      if (entry.response.bodyOmitted) {
+        entry.response.captureError ??=
+          "Structured response body unavailable or invalid";
         this.#complete = false;
       }
     }

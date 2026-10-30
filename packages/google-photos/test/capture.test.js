@@ -155,6 +155,11 @@ test("export cannot race an in-flight response-body retrieval", async () => {
     request: {
       url: "https://photos.google.com/_/PhotosUi/data/batchexecute?rpcids=VrseUb",
       method: "POST",
+      postData: new URLSearchParams({
+        "f.req": JSON.stringify([
+          [["VrseUb", JSON.stringify(["media-a"]), null, "generic"]],
+        ]),
+      }).toString(),
     },
   });
   await r.event("Network.responseReceived", {
@@ -193,4 +198,122 @@ test("malformed protocol responses mark the capture incomplete", async () => {
     encodedDataLength: 8,
   });
   assert.equal(r.export().complete, false);
+});
+
+test("omitted structured response bodies cannot produce complete evidence or replay traffic", async (t) => {
+  const postData = new URLSearchParams({
+    "f.req": JSON.stringify([
+      [["VrseUb", JSON.stringify(["media-a"]), null, "generic"]],
+    ]),
+  }).toString();
+  for (const fixture of [
+    {
+      name: "encoded size limit",
+      encodedDataLength: 1024 * 1024 + 1,
+      calls: 0,
+    },
+    {
+      name: "decoded size limit",
+      encodedDataLength: 100,
+      body: " ".repeat(1024 * 1024 + 1),
+      calls: 1,
+    },
+    {
+      name: "base64 text body",
+      encodedDataLength: 100,
+      body: "PRIVATE_BASE64_BODY",
+      base64Encoded: true,
+      calls: 1,
+    },
+    { name: "missing text body", encodedDataLength: 100, calls: 1 },
+  ]) {
+    await t.test(fixture.name, async () => {
+      const commands = [];
+      const recorder = new PassiveRecorder({
+        send: async (method) => {
+          commands.push(method);
+          return { body: fixture.body, base64Encoded: fixture.base64Encoded };
+        },
+        now: () => 0,
+      });
+      await recorder.event("Network.requestWillBeSent", {
+        requestId: "a",
+        type: "Fetch",
+        request: {
+          url: "https://photos.google.com/_/PhotosUi/data/batchexecute?rpcids=VrseUb",
+          method: "POST",
+          postData,
+        },
+      });
+      await recorder.event("Network.responseReceived", {
+        requestId: "a",
+        response: { status: 200, mimeType: "application/json" },
+      });
+      await recorder.event("Network.loadingFinished", {
+        requestId: "a",
+        encodedDataLength: fixture.encodedDataLength,
+      });
+      const capture = recorder.export();
+      assert.equal(capture.complete, false);
+      assert.equal(capture.pending, 0);
+      assert.equal(capture.entries.length, 1);
+      assert.equal(capture.entries[0].response.bodyOmitted, true);
+      assert.equal(typeof capture.entries[0].response.captureError, "string");
+      assert.deepEqual(
+        commands,
+        Array(fixture.calls).fill("Network.getResponseBody"),
+      );
+      assert.ok(!JSON.stringify(capture).includes("PRIVATE_BASE64_BODY"));
+    });
+  }
+});
+
+test("missing, oversized, and malformed RPC request bodies mark evidence incomplete", async (t) => {
+  for (const postData of [
+    undefined,
+    " ".repeat(1024 * 1024 + 1),
+    "f.req=PRIVATE_BAD_JSON",
+  ]) {
+    await t.test(
+      postData === undefined
+        ? "missing"
+        : postData.length > 1024 * 1024
+          ? "oversized"
+          : "malformed",
+      async () => {
+        const commands = [];
+        const recorder = new PassiveRecorder({
+          send: async (method) => {
+            commands.push(method);
+            return { body: envelope("VrseUb", [item()]) };
+          },
+          now: () => 0,
+        });
+        await recorder.event("Network.requestWillBeSent", {
+          requestId: "a",
+          type: "Fetch",
+          request: {
+            url: "https://photos.google.com/_/PhotosUi/data/batchexecute?rpcids=VrseUb",
+            method: "POST",
+            hasPostData: true,
+            postData,
+          },
+        });
+        await recorder.event("Network.responseReceived", {
+          requestId: "a",
+          response: { status: 200, mimeType: "application/json" },
+        });
+        await recorder.event("Network.loadingFinished", {
+          requestId: "a",
+          encodedDataLength: 100,
+        });
+        const capture = recorder.export();
+        assert.equal(capture.complete, false);
+        assert.equal(capture.entries[0].request.bodyOmitted, true);
+        assert.equal(typeof capture.entries[0].request.captureError, "string");
+        assert.deepEqual(commands, ["Network.getResponseBody"]);
+        assert.ok(!JSON.stringify(capture).includes("PRIVATE_BAD_JSON"));
+      },
+    );
+  }
 });
