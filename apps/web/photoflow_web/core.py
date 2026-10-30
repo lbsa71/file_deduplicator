@@ -406,13 +406,14 @@ class Library:
             "tags",
             "favorite",
             "location",
+            "place",
             "display_rotation",
             "capture_time",
         }
         if (set(sets) | set(resets)) - allowed or set(sets) & set(resets):
             raise ValueError("Invalid metadata fields")
         for k, v in sets.items():
-            if k in ("people", "albums", "tags") and (
+            if k in ("people", "albums", "tags", "place") and (
                 not isinstance(v, list)
                 or len(v) > 256
                 or any(not isinstance(x, str) or len(x) > 256 for x in v)

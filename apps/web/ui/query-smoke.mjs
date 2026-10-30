@@ -82,6 +82,24 @@ try {
   expect(before.total).toBe(108);
   const hashes = await originals(before.items);
   await expect(page.locator(".grid .tile")).toHaveCount(100);
+  const places = page.getByRole("group", { name: "Place", exact: true });
+  await places.getByRole("checkbox", { name: /^Stockholm/ }).check();
+  await count(36);
+  await places.getByRole("checkbox", { name: /^Norway/ }).check();
+  await count(108);
+  await page.reload();
+  await count(108);
+  expect(new URL(page.url()).searchParams.getAll("place").sort()).toEqual([
+    "Norway",
+    "Stockholm",
+  ]);
+  await places.getByRole("checkbox", { name: /^Stockholm/ }).uncheck();
+  await count(72);
+  await places.getByRole("checkbox", { name: /^Norway/ }).uncheck();
+  await places.getByRole("checkbox", { name: /^Europe/ }).check();
+  await count(108);
+  await places.getByRole("checkbox", { name: /^Europe/ }).uncheck();
+  await count(108);
   await renderedPreview();
   await noHorizontalOverflow();
 
@@ -158,6 +176,8 @@ try {
     .getByRole("radio", { name: "Yes", exact: true })
     .check();
   await count(9);
+  await places.getByRole('checkbox',{name:/^Europe/}).check();
+  await count(9);
   await page.reload();
   await count(9);
   await expect(
@@ -174,6 +194,7 @@ try {
     .getByRole("link", { name: "Together in 2009", exact: true })
     .click();
   await count(9);
+  await expect(places.getByRole('checkbox',{name:/^Europe/})).toBeChecked();
   await page
     .getByRole("button", { name: "Manage Together in 2009", exact: true })
     .click();
@@ -246,6 +267,7 @@ try {
     expect(item.metadata.tags).toEqual(["Original", "Reviewed"]);
     expect(item.metadata.people).toEqual(prior.get(item.id).people);
     expect(item.metadata.albums).toEqual(prior.get(item.id).albums);
+    expect(item.metadata.place).toEqual(prior.get(item.id).place);
   }
   expect(await originals(after.items)).toEqual(hashes);
   expect(await read("/views")).toEqual({ items: [] });

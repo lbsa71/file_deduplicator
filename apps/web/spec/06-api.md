@@ -4,11 +4,12 @@
 
 `GET /api/v1/photos` accepts `filters`, a JSON object alongside the existing
 `q`, `folder`, `duplicates`, `favorite`, and `trash` scope. Supported keys are
-`people`, `people_mode` (any/all), `albums`, `tags`, `from`, `to`, `date`
+`people`, `people_mode` (any/all), `place`, `albums`, `tags`, `from`, `to`, `date`
 (any/known/unknown), `favorite` (any/yes/no), `type` (any/image/video), and
-`missing` (any/people/albums). Dates are inclusive YYYY-MM-DD values.
+`missing` (any/people/albums/place/location/location_conflict). Place values use OR
+across the specific-to-broad hierarchy. Dates are inclusive YYYY-MM-DD values.
 `GET /api/v1/facets` accepts the same scope and returns `people`, `albums`, `tags`,
-and `years` as `{value,count}` arrays, plus `date_unknown` and `total`.
+`place`, and `years` as `{value,count}` arrays, plus `date_unknown` and `total`.
 
 `GET/POST /api/v1/views` lists/creates the authenticated user's saved queries.
 Create body: `{name,query}`. `PATCH/DELETE /api/v1/views/{id}` require `If-Match`.

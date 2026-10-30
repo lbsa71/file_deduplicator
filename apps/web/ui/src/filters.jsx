@@ -306,6 +306,23 @@ export function Filters({ filters = {}, onChange, facets = {}, busy = false }) {
           </LabelChoices>
         </details>
         <details className="filter-section" open>
+          <summary>
+            Place{" "}
+            <small>{f.place?.length ? `${f.place.length} selected` : ""}</small>
+          </summary>
+          <LabelChoices
+            title="Place"
+            values={facets.place}
+            selected={f.place}
+            onChange={(place) => change({ place })}
+          >
+            <p className="facet-help">
+              Choose any city, region, country or continent. Multiple places
+              match any selected location.
+            </p>
+          </LabelChoices>
+        </details>
+        <details className="filter-section" open>
           <summary>Time</summary>
           <DateFilter filters={f} facets={facets} change={change} />
         </details>
@@ -381,6 +398,9 @@ export function Filters({ filters = {}, onChange, facets = {}, busy = false }) {
               <option value="any">Any</option>
               <option value="people">No people labels</option>
               <option value="albums">No album labels</option>
+              <option value="place">No place names</option>
+              <option value="location">No resolved coordinates</option>
+              <option value="location_conflict">Conflicting locations</option>
             </select>
           </label>
           <p className="facet-help">

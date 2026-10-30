@@ -338,7 +338,10 @@ export function BatchDialog({
                 change({
                   action: e.target.value,
                   value: e.target.value === "favorite" ? "yes" : "",
-                  mode: "add",
+                  mode:
+                    e.target.value === "labels" && draft.field === "place"
+                      ? "replace"
+                      : "add",
                 })
               }
             >
@@ -361,11 +364,17 @@ export function BatchDialog({
                 Field
                 <select
                   value={draft.field}
-                  onChange={(e) => change({ field: e.target.value })}
+                  onChange={(e) =>
+                    change({
+                      field: e.target.value,
+                      mode: e.target.value === "place" ? "replace" : "add",
+                    })
+                  }
                 >
                   <option value="tags">Tags</option>
                   <option value="people">People</option>
                   <option value="albums">Albums</option>
+                  <option value="place">Place hierarchy</option>
                 </select>
               </label>
               <label className="form-field">
@@ -374,10 +383,18 @@ export function BatchDialog({
                   value={draft.mode}
                   onChange={(e) => change({ mode: e.target.value })}
                 >
-                  <option value="add">Add labels</option>
-                  <option value="remove">Remove labels</option>
+                  {draft.field !== "place" && (
+                    <>
+                      <option value="add">Add labels</option>
+                      <option value="remove">Remove labels</option>
+                    </>
+                  )}
                   <option value="replace">Replace all labels</option>
-                  <option value="reset">Reset to imported values</option>
+                  <option value="reset">
+                    {draft.field === "place"
+                      ? "Reset to automatic hierarchy"
+                      : "Reset to imported values"}
+                  </option>
                 </select>
               </label>
               {draft.mode !== "reset" && (

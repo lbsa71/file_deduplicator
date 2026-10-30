@@ -1,5 +1,12 @@
 # PhotoFlow
 
+Offline places: add `--places --geodir /path/to/Geolocation500` to `photoflow run`.
+This resolves stored EXIF/Takeout coordinates and writes an ordered `resolved.place`
+hierarchy (locality, administrative areas, country, continent) with provenance.
+`--no-move` supports metadata-only backfills. ExifTool and its pinned GeoNames
+database are the only lookup dependencies; no network geocoding runs. See the
+[place ADR](../web/spec/adr/0002-place-hierarchies-and-offline-geocoding.md).
+
 A small batch service for a filesystem photo library. Drop media into any folder
 under the library root; each pass updates adjacent JSON records, preserves source
 metadata, finds exact duplicates, and organizes files into date folders.

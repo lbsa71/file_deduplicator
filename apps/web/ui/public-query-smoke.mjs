@@ -53,6 +53,39 @@ try {
   await page.getByRole("link", { name: "Favorites", exact: true }).click();
   await page.waitForURL(base + "/favorites");
   await expect(page.locator(".query-filters")).toBeVisible();
+  if (facets.place?.length) {
+    const names = ["Stockholm", "Norway"].filter((name) =>
+      facets.place.some((p) => p.value === name && p.count),
+    );
+    if (!names.length) names.push(facets.place.find((p) => p.count).value);
+    const params = new URLSearchParams(names.map((n) => ["place", n]));
+    const filtered = await context.request.get(
+      base +
+        "/api/v1/photos?filters=" +
+        encodeURIComponent(JSON.stringify({ place: names })),
+    );
+    expect(filtered.ok()).toBeTruthy();
+    const expected = await filtered.json();
+    await page.goto(base + "/photos?" + params);
+    await expect(page.locator(".heading [role=status]")).toHaveText(
+      `${expected.total.toLocaleString()} matching photographs and videos`,
+      { timeout: 60000 },
+    );
+    const group = page.getByRole("group", { name: "Place", exact: true });
+    await expect(group.locator("input:checked")).toHaveCount(names.length);
+    await page.reload();
+    await expect(page.locator(".heading [role=status]")).toHaveText(
+      `${expected.total.toLocaleString()} matching photographs and videos`,
+      { timeout: 60000 },
+    );
+    console.log(
+      JSON.stringify({
+        place_query: names,
+        matching: expected.total,
+        place_labels: facets.place.length,
+      }),
+    );
+  }
   expect(errors).toEqual([]);
   console.log(
     JSON.stringify({

@@ -127,6 +127,7 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
     def scan(mode="reconcile"):
         from photoflow.adapters import ExifToolReader, SystemClock, RandomIds
         from photoflow.runner import Runner, Config
+        from photoflow.geocoder import ExifToolGeocoder
 
         with library.mutex:
             with library.writer():
@@ -149,6 +150,12 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
                         for level in (64, 256, 512):
                             media.variant(record, level)
                 return {"scheduled_records": len(records)}
+            place_warning = None
+            try:
+                geocoder = ExifToolGeocoder(database=os.environ.get("PHOTOFLOW_GEODIR"))
+            except (ValueError, OSError) as error:
+                geocoder = None
+                place_warning = str(error)
             result = Runner(
                 library.fs,
                 SystemClock(),
@@ -159,7 +166,10 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
                     verify=mode == "verify",
                     expected_library_id=library.id,
                 ),
+                geocoder=geocoder,
             ).run()
+            if place_warning:
+                result.warnings.append("place_enrichment: " + place_warning)
             library.rebuild()
             return result.to_dict()
 

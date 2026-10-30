@@ -209,4 +209,5 @@ class ApplyMoves(ItemStage):
 
 
 def default_stages():
-    return (Observe(), Fingerprint(), ExtractMetadata(), ExactDuplicates(), PlanLocations(), ApplyMoves())
+    from .places import PlaceEnrichment
+    return (Observe(), Fingerprint(), ExtractMetadata(), ExactDuplicates(), PlaceEnrichment(), PlanLocations(), ApplyMoves())

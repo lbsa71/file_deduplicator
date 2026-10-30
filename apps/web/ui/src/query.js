@@ -1,11 +1,23 @@
-const lists = { people: "person", albums: "album", tags: "tag" };
+const lists = {
+  people: "person",
+  place: "place",
+  albums: "album",
+  tags: "tag",
+};
 const scopeKeys = ["folder", "duplicates", "favorite", "trash"];
 const choices = {
   people_mode: ["any", "all"],
   date: ["any", "known", "unknown"],
   favorite: ["any", "yes", "no"],
   type: ["any", "image", "video"],
-  missing: ["any", "people", "albums"],
+  missing: [
+    "any",
+    "people",
+    "albums",
+    "place",
+    "location",
+    "location_conflict",
+  ],
 };
 
 // The URL carries predicates. Defaults are omitted so equivalent queries share a URL.
@@ -116,7 +128,7 @@ export function filterChips(filters) {
     for (const value of f[key] || [])
       result.push({
         key: key + ":" + value,
-        label: `${key === "people" ? "Person" : key === "albums" ? "Album" : "Tag"}: ${value}`,
+        label: `${key === "people" ? "Person" : key === "albums" ? "Album" : key === "place" ? "Place" : "Tag"}: ${value}`,
         filters: normalizeFilters({
           ...f,
           [key]: f[key].filter((v) => v !== value),
@@ -132,7 +144,14 @@ export function filterChips(filters) {
     date: (v) => (v === "known" ? "Date known" : "Date unknown"),
     favorite: (v) => (v === "yes" ? "Favourites only" : "Not favourited"),
     type: (v) => (v === "image" ? "Images" : "Videos"),
-    missing: (v) => (v === "people" ? "No people labels" : "No album labels"),
+    missing: (v) =>
+      ({
+        people: "No people labels",
+        albums: "No album labels",
+        place: "No place names",
+        location: "No resolved coordinates",
+        location_conflict: "Conflicting locations",
+      })[v],
   };
   for (const [key, label] of Object.entries(labels))
     if (f[key]) {

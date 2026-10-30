@@ -72,11 +72,41 @@ class QueryTests(unittest.TestCase):
         self.assertEqual(self.ids(filters={"people": ["Ellen"], "tags": ["Trip"]}), {3})
         self.assertEqual(self.ids(filters={"albums": ["Summer", "Family"]}), {1, 2, 3})
 
+    def test_place_matches_any_level_and_unions_countries_with_cities(self):
+        self.records[1].data["resolved"]["place"] = ["Stockholm", "Sweden", "Europe"]
+        self.records[2].data["resolved"]["place"] = ["Bergen", "Norway", "Europe"]
+        self.records[3].data["resolved"]["place"] = ["Uppsala", "Sweden", "Europe"]
+        for n in (1, 2, 3):
+            self.save(n)
+        self.assertEqual(self.ids(filters={"place": ["Stockholm", "Norway"]}), {1, 2})
+        self.assertEqual(self.ids(filters={"place": ["Europe"]}), {1, 2, 3})
+        self.assertEqual(
+            self.ids(filters={"place": ["Sweden"], "people": ["Viktor"]}), {3}
+        )
+        self.assertEqual(self.ids(filters={"missing": "place"}), {4})
+        values = {
+            x["value"]: x["count"]
+            for x in self.lib.facets(filters={"place": ["Stockholm"]})["place"]
+        }
+        self.assertEqual(values["Sweden"], 2)
+        self.assertEqual(values["Europe"], 3)
+
     def test_exact_labels_do_not_use_substring_or_sql_pattern_matching(self):
         label = "O'Neil_% 🐈"
         self.add(5, people=[label, label], albums=["Summerish"])
         self.assertEqual(self.ids(filters={"people": [label]}), {5})
         self.assertEqual(self.ids(filters={"albums": ["Summer"]}), {1, 2, 3})
+
+    def test_location_maintenance_filters(self):
+        self.records[1].data["resolved"]["location"] = {
+            "latitude": 59.3,
+            "longitude": 18,
+        }
+        self.records[2].data["resolved"]["location_status"] = "conflict"
+        self.save(1)
+        self.save(2)
+        self.assertEqual(self.ids(filters={"missing": "location"}), {2, 3, 4})
+        self.assertEqual(self.ids(filters={"missing": "location_conflict"}), {2})
 
     def test_date_range_is_inclusive_in_recorded_calendar_date(self):
         self.assertEqual(

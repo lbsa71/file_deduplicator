@@ -16,7 +16,7 @@ from photoflow.metadata import resolve
 from photoflow.model import Record, encoded
 from .core import Conflict, atomic, digest, load
 
-LABELS = {"people", "albums", "tags"}
+LABELS = {"people", "albums", "tags", "place"}
 FIELDS = LABELS | {
     "title",
     "description",
@@ -118,6 +118,7 @@ def normalize_operation(value):
         not fields
         or fields - FIELDS
         or (set(adds) | set(removes)) - LABELS
+        or "place" in (set(adds) | set(removes))
         or set(sets) & (set(resets) | set(adds) | set(removes))
         or set(resets) & (set(adds) | set(removes))
     ):

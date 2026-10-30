@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { parseRoute, routeURL } from "./routes.js";
 import {
   normalizeFilters,
   filtersFromParams,
@@ -125,4 +126,12 @@ test("the library folder root keeps its physical-occurrence scope", () => {
     queryScope({ tab: "Photos", folder: ".", filters: {} }).folder,
     undefined,
   );
+});
+
+test("place hierarchy selections persist and combine by OR", () => {
+  const route = parseRoute("/photos?place=Stockholm&place=Norway");
+  assert.deepEqual(route.filters.place, ["Norway", "Stockholm"]);
+  assert.deepEqual(queryScope(route).filters.place, ["Norway", "Stockholm"]);
+  assert.equal(routeURL(route), "/photos?place=Norway&place=Stockholm");
+  assert.equal(filterChips(route.filters)[0].label, "Place: Norway");
 });

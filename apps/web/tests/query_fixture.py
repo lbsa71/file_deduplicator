@@ -64,6 +64,10 @@ def prepare(base):
             },
             "favorited": index % 4 == 0,
             "fixture_unknown_field": f"preserve-{index}",
+            "geoData": {
+                "latitude": 59.3293 if index % 3 == 0 else 59.9139,
+                "longitude": 18.0686 if index % 3 == 0 else 10.7522,
+            },
         }
         record["sources"][0]["documents"] = [
             {
@@ -74,6 +78,21 @@ def prepare(base):
             }
         ]
         record["overrides"] = {"tags": ["Original"], "albums": ["Family"]}
+        record["stages"]["place"] = {
+            "input_key": "fixture",
+            "completed_at": "2026-10-30T00:00:00Z",
+            "result": {
+                "location": source["geoData"],
+                "hierarchy": (
+                    ["Stockholm", "Sweden", "Europe"]
+                    if index % 3 == 0
+                    else ["Oslo", "Norway", "Europe"]
+                ),
+                "provider": "fixture",
+                "method": "nearest_settlement",
+                "distance_km": 0.02,
+            },
+        }
         record["resolved"] = resolve(Record(record))
         record["file"]["sha256"] = hashlib.sha256(photo.read_bytes()).hexdigest()
         signature = filesystem.stat(relative)

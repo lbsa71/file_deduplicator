@@ -11,8 +11,9 @@ from .model import input_key
 from .content import stable
 from .ports import ChangedError
 from .source_cache import SourceCache
+from .places import coordinate_resolution, resolved_place
 
-RESOLVER_VERSION = 'takeout-and-exif-v2'
+RESOLVER_VERSION = 'takeout-and-exif-v3-places'
 
 
 def read_document(fs, path, kind):
@@ -202,7 +203,14 @@ def resolve(record):
             if isinstance(raw.get('description'), str):
                 add('description', raw['description'], origin, 'description')
     resolved = {'capture_time': None, 'people': [], 'albums': [], 'description': '', 'title': None, 'tags': [], 'favorite': False, 'location': None, 'display_rotation': 0}
+    location, status, observations = coordinate_resolution(record)
+    place, detail = resolved_place(record, location)
+    resolved.update(location=location, location_status=status, place=place, place_details=detail)
+    provenance['location'] = observations
+    provenance['place'] = [{'value':place,'source':detail['provider'],'field':'place.hierarchy'}] if detail else []
     for field, assertions in provenance.items():
+        if field in ('location','place'):
+            continue
         if field in ('people', 'albums'):
             resolved[field] = sorted({a['value'] for a in assertions})
         elif field == 'favorite':
@@ -214,6 +222,9 @@ def resolve(record):
             continue
         if field == 'capture_time' and value is not None and valid_date(value) is None:
             raise ValueError('capture_time override must be an ISO date/time or null')
+        if field == 'place' and (not isinstance(value,list) or len(value)>256 or
+                any(not isinstance(v,str) or not v.strip() or len(v)>256 for v in value)):
+            raise ValueError('place must be an ordered array of nonempty labels')
         resolved[field] = copy.deepcopy(value)
         provenance.setdefault(field, []).append({'value': copy.deepcopy(value), 'source': 'human', 'field': field})
     resolved['provenance'] = provenance
@@ -222,7 +233,7 @@ def resolve(record):
 
 def resolution_key(record):
     return input_key([RESOLVER_VERSION, record.data['sources'], record.data['overrides'],
-                      record.data['stages'].get('embedded_metadata')])
+                      record.data['stages'].get('embedded_metadata'), record.data['stages'].get('place')])
 
 
 def merge_sources(target, incoming):

@@ -145,7 +145,7 @@ class Record:
                 raise ValueError(f'missing {key} object')
         for section in ('resolved', 'overrides'):
             for key, value in data[section].items():
-                if key in ('people', 'albums') and (not isinstance(value, list) or not all(isinstance(v, str) for v in value)):
+                if key in ('people', 'albums', 'place') and (not isinstance(value, list) or not all(isinstance(v, str) for v in value)):
                     raise ValueError(f'{section}.{key} must be a list of strings')
                 if key in ('capture_time', 'description') and value is not None and not isinstance(value, str):
                     raise ValueError(f'{section}.{key} must be a string or null')

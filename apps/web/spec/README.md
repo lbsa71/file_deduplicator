@@ -25,6 +25,9 @@ numbers are acceptance targets to measure, not results already achieved.
 
 ## Architecture decisions
 
+- [ADR 0002: Place hierarchies and offline geocoding](adr/0002-place-hierarchies-and-offline-geocoding.md)
+  adds sourced coordinates, hierarchical Place filters and offline enrichment.
+
 - [ADR 0001: Visual queries, saved views, and explicit batch targets](adr/0001-visual-querying-and-saved-views.md)
   specifies the filter sidebar, persistent personal views, query URLs, and reviewed
   batch operations. Its People Any/All and exact label-selection rules refine the

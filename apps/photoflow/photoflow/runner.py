@@ -195,9 +195,10 @@ def prune_empty_directories(fs, candidates, summary):
 
 
 class Runner:
-    def __init__(self, fs, clock, ids, reader, config=None, stages=None):
+    def __init__(self, fs, clock, ids, reader, config=None, stages=None, geocoder=None):
         self.fs, self.clock, self.ids, self.reader = fs, clock, ids, reader
         self.config = config or Config()
+        self.geocoder = geocoder
         if stages is None:
             from .stages import default_stages
             stages = default_stages()
@@ -230,6 +231,7 @@ class Runner:
                 directories = snapshot.directories if self.config.move_files and not self.config.dry_run else ()
                 inventory = snapshot.files
                 ctx = Context(self.fs, self.clock, self.ids, self.reader, self.config, result, library_id, snapshot)
+                ctx.geocoder = self.geocoder
                 batch = discover(ctx)
                 result.discovered = len(batch)
                 for stage in self.stages:

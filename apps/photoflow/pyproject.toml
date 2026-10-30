@@ -14,3 +14,6 @@ photoflow = "photoflow.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["photoflow*"]
+
+[tool.setuptools.package-data]
+photoflow = ["data/*.json"]

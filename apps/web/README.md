@@ -137,6 +137,26 @@ search persistence, redirect safety, and missing-resource responses.
 
 ## Visual queries and batch maintenance
 
+Place is an ordered hierarchy in each sidecar (`resolved.place`), for example
+`["Stockholm", "Stockholms Kommun", "Sweden", "Europe"]`. The Place selector
+matches any selected city, region, country or continent: `/photos?place=Stockholm&place=Norway`.
+Counts include all hierarchy levels and overlap. Viewer details show the hierarchy,
+approximate locality distance and GeoNames attribution. Manual place edits/reset
+use the existing metadata and reviewed batch forms. Unchanged fields in the editor
+do not become manual overrides.
+
+Coordinates are reconciled from preserved embedded GPS and Takeout observations.
+Disagreements over 250 metres are flagged for review; manual coordinates take
+precedence. Missing coordinates, missing place names and conflicts are maintenance
+filters. Offline ExifTool enrichment uses the expanded GeoNames database configured
+by `PHOTOFLOW_GEODIR`; install the pinned database from
+[ADR 0002](spec/adr/0002-place-hierarchies-and-offline-geocoding.md).
+No external geocoding API receives photo locations. Nearest-settlement labels are
+approximate and do not establish administrative boundary containment.
+
+Backfill with `photoflow run ROOT --exiftool --places --geodir DIRECTORY --no-move`.
+Place results persist in sidecars; `.photoflow/place-cache.json` is rebuildable.
+
 The [accepted design](spec/adr/0001-visual-querying-and-saved-views.md) uses coordinated
 People, Time, Favourite, Albums, Tags, media-type and missing-metadata filters.
 People supports Any/All; dates have a histogram, keyboard range slider and exact

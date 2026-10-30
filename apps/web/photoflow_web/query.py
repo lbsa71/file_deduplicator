@@ -4,9 +4,10 @@ import re
 from datetime import date, datetime
 from pathlib import PurePosixPath
 
-LABELS = ("people", "albums", "tags")
+LABELS = ("people", "place", "albums", "tags")
 DEFAULTS = {
     "people": [],
+    "place": [],
     "people_mode": "any",
     "albums": [],
     "tags": [],
@@ -22,7 +23,7 @@ CHOICES = {
     "date": ("any", "known", "unknown"),
     "favorite": ("any", "yes", "no"),
     "type": ("any", "image", "video"),
-    "missing": ("any", "people", "albums"),
+    "missing": ("any", "people", "albums", "place", "location", "location_conflict"),
 }
 VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".avi", ".mkv", ".3gp", ".mts", ".webm"}
 TABLES = "listing l JOIN query_properties p ON p.id=l.id"
@@ -191,7 +192,11 @@ class Query:
         if filters["type"] != "any":
             conditions.append("p.media_type=?")
             params.append(filters["type"])
-        if filters["missing"] != "any":
+        if filters["missing"] == "location":
+            conditions.append("json_extract(l.metadata,'$.location') IS NULL")
+        elif filters["missing"] == "location_conflict":
+            conditions.append("json_extract(l.metadata,'$.location_status')='conflict'")
+        elif filters["missing"] != "any":
             conditions.append(
                 "NOT EXISTS(SELECT 1 FROM query_labels x WHERE x.id=l.id AND x.facet=?)"
             )

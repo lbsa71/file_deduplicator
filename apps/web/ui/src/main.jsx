@@ -917,6 +917,20 @@ function App() {
             <p>{view.resolved.capture_time}</p>
             <p>{view.resolved.people?.join(", ")}</p>
             <p>{view.resolved.albums?.join(", ")}</p>
+            <p>{view.resolved.place?.join(" → ")}</p>
+            {view.resolved.location_status === "conflict" && (
+              <p>
+                Location sources disagree. Review the source coordinates before
+                assigning a place.
+              </p>
+            )}
+            {view.resolved.place_details && (
+              <small>
+                Approximate locality ·{" "}
+                {view.resolved.place_details.distance_km ?? "?"} km from
+                settlement · GeoNames (CC BY 4.0)
+              </small>
+            )}
             <small>{view.file.relative_path}</small>
             <div className="actions">
               <a
@@ -1034,12 +1048,19 @@ function MetadataEditor({ record, cancel, save }) {
               "description",
               "capture_time",
               "people",
+              "place",
+              "location",
               "albums",
               "tags",
               "favorite",
               "display_rotation",
             ]
-              .filter((k) => !reset.includes(k))
+              .filter(
+                (k) =>
+                  !reset.includes(k) &&
+                  JSON.stringify(d[k] ?? null) !==
+                    JSON.stringify(record.resolved[k] ?? null),
+              )
               .map((k) => [k, d[k] ?? null]),
           );
           save({ set, reset });
@@ -1051,6 +1072,7 @@ function MetadataEditor({ record, cancel, save }) {
           "description",
           "capture_time",
           "people",
+          "place",
           "albums",
           "tags",
         ].map((k) => (
@@ -1061,7 +1083,7 @@ function MetadataEditor({ record, cancel, save }) {
               onChange={(e) =>
                 D({
                   ...d,
-                  [k]: ["people", "albums", "tags"].includes(k)
+                  [k]: ["people", "albums", "tags", "place"].includes(k)
                     ? e.target.value
                         .split(",")
                         .map((v) => v.trim())
@@ -1082,10 +1104,68 @@ function MetadataEditor({ record, cancel, save }) {
                   )
                 }
               />{" "}
-              Reset to imported value
+              {k === "place"
+                ? "Reset to automatic hierarchy"
+                : "Reset to imported value"}
             </small>
           </label>
         ))}
+        <fieldset>
+          <legend>Coordinates</legend>
+          {["latitude", "longitude"].map((key) => (
+            <label key={key}>
+              {key === "latitude" ? "Latitude" : "Longitude"}
+              <input
+                type="number"
+                step="any"
+                min={key === "latitude" ? -90 : -180}
+                max={key === "latitude" ? 90 : 180}
+                required={d.location !== null}
+                disabled={reset.includes("location")}
+                value={d.location?.[key] ?? ""}
+                onChange={(e) =>
+                  D({
+                    ...d,
+                    location: {
+                      ...d.location,
+                      [key]:
+                        e.target.value === ""
+                          ? undefined
+                          : Number(e.target.value),
+                    },
+                  })
+                }
+              />
+            </label>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              D({ ...d, location: null });
+              R(reset.filter((k) => k !== "location"));
+            }}
+          >
+            Clear coordinates
+          </button>
+          <label>
+            <input
+              type="checkbox"
+              checked={reset.includes("location")}
+              onChange={(e) =>
+                R(
+                  e.target.checked
+                    ? [...reset, "location"]
+                    : reset.filter((k) => k !== "location"),
+                )
+              }
+            />
+            Reset coordinates to imported values
+          </label>
+          <small>
+            After changing coordinates, run Rescan to refresh automatic place
+            names. Place labels above are ordered from specific to broad.
+          </small>
+        </fieldset>
         <label>
           Display rotation
           <select

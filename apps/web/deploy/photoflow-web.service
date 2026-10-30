@@ -9,6 +9,7 @@ Group=photoflow-web
 SupplementaryGroups=media
 Environment=PHOTOFLOW_LIBRARY=/mnt/usb/PhotoLibrary
 Environment=PHOTOFLOW_STATE=/var/lib/photoflow-web
+Environment=PHOTOFLOW_GEODIR=/opt/photoflow-geolocation/Geolocation500
 Environment=PATH=/opt/photoflow-exiftool:/opt/photoflow-web-venv/bin:/usr/bin:/bin
 ExecStart=/opt/photoflow-web-venv/bin/photoflow-web
 StateDirectory=photoflow-web
@@ -23,7 +24,7 @@ IPAddressAllow=localhost
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/mnt/usb/PhotoLibrary
-MemoryMax=2G
+MemoryMax=3G
 TasksMax=64
 UMask=0077
 [Install]

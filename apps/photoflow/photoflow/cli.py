@@ -31,6 +31,8 @@ def parser():
     run.add_argument('--expect-library-id', help='refuse to run against another library')
     run.add_argument('--extensions', help='comma-separated suffixes, overriding the default media list')
     run.add_argument('--exiftool', action='store_true', help='extract embedded metadata using installed ExifTool')
+    run.add_argument('--places', action='store_true', help='enrich stored coordinates using offline ExifTool geolocation')
+    run.add_argument('--geodir', help='directory containing ExifTool Geolocation.dat')
     run.add_argument('--stats', action='store_true', help='include filesystem access counters and elapsed time')
     search = commands.add_parser('search', help='search original names and resolved metadata without writing')
     search.add_argument('root')
@@ -100,7 +102,9 @@ def main(argv=None):
         if args.stats:
             fs = MeteredFileSystem(fs)
         reader = ExifToolReader(fs) if args.exiftool else NoEmbeddedMetadata()
-        result = Runner(fs, SystemClock(), RandomIds(), reader, config).run()
+        from .geocoder import ExifToolGeocoder
+        geocoder = ExifToolGeocoder(database=args.geodir) if args.places else None
+        result = Runner(fs, SystemClock(), RandomIds(), reader, config, geocoder=geocoder).run()
         if args.stats:
             result.io = fs.stats()
             result.io['elapsed_seconds'] = round(time.perf_counter() - started, 6)
