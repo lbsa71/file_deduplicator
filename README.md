@@ -17,6 +17,9 @@ introduced when there is code both applications actually use.
 
 ## Development
 
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the TDD workflow, preservation rules,
+and mandatory fail-closed behavior at external integration boundaries.
+
 From the repository root, with Python 3.11 or newer:
 
 ```bash
