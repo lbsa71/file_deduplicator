@@ -26,8 +26,8 @@ numbers are acceptance targets to measure, not results already achieved.
 ## Architecture decisions
 
 - [ADR 0003: Google Photos retention and metadata round trips](adr/0003-google-photos-reconciliation.md)
-  records the retention rules and proposes a small defensive browser adapter;
-  integration and live qualification remain future work.
+  records the retention rules and standalone defensive library/capture tooling;
+  application integration and live qualification remain future work.
 
 - [ADR 0002: Place hierarchies and offline geocoding](adr/0002-place-hierarchies-and-offline-geocoding.md)
   adds sourced coordinates, hierarchical Place filters and offline enrichment.

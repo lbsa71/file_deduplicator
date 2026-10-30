@@ -1,0 +1,56 @@
+body {
+  width: 360px;
+  margin: 0;
+  background: #f5f6f8;
+  color: #182129;
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
+}
+main {
+  padding: 20px;
+}
+h1 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+p {
+  color: #46535d;
+}
+button {
+  padding: 8px 12px;
+  margin: 3px 4px 3px 0;
+  border: 1px solid #a4afb8;
+  border-radius: 6px;
+  background: white;
+  color: #182129;
+  cursor: pointer;
+}
+button:hover {
+  background: #e7f0f8;
+}
+button:focus-visible {
+  outline: 3px solid #2978b9;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#start {
+  background: #165c91;
+  color: white;
+}
+output {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #e8edf2;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 12px;
+}
+hr {
+  border: 0;
+  border-top: 1px solid #ccd2d8;
+  margin: 18px 0;
+}

@@ -1,7 +1,7 @@
 PYTHON ?= python3
 VENV ?= .venv
 
-.PHONY: setup test test-storage check setup-web test-web build-web
+.PHONY: setup test test-storage check setup-web test-web build-web test-google-photos build-google-capture
 
 setup:
 	$(PYTHON) -m venv $(VENV)
@@ -28,3 +28,9 @@ test-web:
 
 build-web:
 	cd apps/web/ui && npm run build -- --outDir ../photoflow_web/static --emptyOutDir
+
+test-google-photos:
+	npm test --prefix packages/google-photos
+
+build-google-capture:
+	npm run build:capture --prefix packages/google-photos

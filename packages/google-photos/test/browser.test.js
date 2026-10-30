@@ -1,0 +1,104 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { pageRequest, createPageTransport } from "../src/browser.js";
+import { ACCOUNT, envelope } from "./fixtures.js";
+const session = {
+  oPEP7c: ACCOUNT,
+  FdrFJe: "session-secret",
+  cfb2h: "build",
+  eptZe: "/_/PhotosUi/",
+  SNlM0e: "csrf-secret",
+};
+const request = {
+  account: ACCOUNT,
+  rpc: "VrseUb",
+  data: ["media-a", null, null, null, null],
+  operation: "item",
+  mode: "read",
+};
+test("browser transport binds origin and account and never exports session values", async () => {
+  const saved = {
+    location: globalThis.location,
+    WIZ_global_data: globalThis.WIZ_global_data,
+    fetch: globalThis.fetch,
+  };
+  try {
+    globalThis.location = new URL("https://photos.google.com/");
+    globalThis.WIZ_global_data = { ...session };
+    let calls = 0;
+    globalThis.fetch = async (url, options) => {
+      calls++;
+      assert.equal(new URL(url).origin, "https://photos.google.com");
+      assert.equal(options.credentials, "include");
+      return new Response(envelope("VrseUb", [[]]), { status: 200 });
+    };
+    const result = await pageRequest(request);
+    assert.equal(result.status, 200);
+    assert.equal(calls, 1);
+    assert.ok(!JSON.stringify(result).includes("secret"));
+    globalThis.WIZ_global_data.oPEP7c = "other";
+    assert.equal((await pageRequest(request)).error, "ACCOUNT");
+    assert.equal(calls, 1);
+    globalThis.location = new URL("https://evil.example/");
+    assert.equal((await pageRequest(request)).error, "ORIGIN");
+    assert.equal(calls, 1);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
+test("account switch during fetch yields an error and there are no retries", async () => {
+  const saved = {
+    location: globalThis.location,
+    WIZ_global_data: globalThis.WIZ_global_data,
+    fetch: globalThis.fetch,
+  };
+  try {
+    globalThis.location = new URL("https://photos.google.com/");
+    globalThis.WIZ_global_data = { ...session };
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      globalThis.WIZ_global_data.oPEP7c = "other";
+      return new Response(envelope("VrseUb", [[]]));
+    };
+    assert.equal((await pageRequest(request)).error, "ACCOUNT");
+    assert.equal(calls, 1);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
+test("read-only browser transport refuses mutations and endpoint substitution", async () => {
+  const saved = {
+    location: globalThis.location,
+    WIZ_global_data: globalThis.WIZ_global_data,
+    fetch: globalThis.fetch,
+  };
+  try {
+    globalThis.location = new URL("https://photos.google.com/");
+    globalThis.WIZ_global_data = { ...session };
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+    };
+    assert.equal(
+      (await pageRequest({ ...request, rpc: "XwAOJf", mode: "write" })).error,
+      "UNQUALIFIED",
+    );
+    globalThis.WIZ_global_data.eptZe = "https://evil.example/";
+    assert.equal((await pageRequest(request)).error, "SESSION");
+    assert.equal(calls, 0);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
+test("evaluation adapter reports controlled errors without exposing browser exception content", async () => {
+  const transport = createPageTransport({
+    evaluate: async () => {
+      throw new Error("SECRET_COOKIE");
+    },
+  });
+  await assert.rejects(
+    transport(request),
+    (e) => e.code === "TRANSPORT" && !e.message.includes("SECRET"),
+  );
+});

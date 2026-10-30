@@ -8,12 +8,18 @@ organizes media using portable JSON records.
 apps/
   photoflow/          Python service, tests, operational scripts, deployment
   web/                React UI, Python API, PAM broker, media workers, deployment
+packages/
+  google-photos/      Standalone protocol library, guarded operations, capture tools
 PLAN.md               Architecture decisions and implementation roadmap
 Makefile              Repository setup and validation commands
 ```
 
 Each application owns its packaging and dependencies. Shared packages can be
 introduced when there is code both applications actually use.
+
+The [Google Photos library](packages/google-photos/README.md) has its own package,
+tests, and browser capture tooling so it can be extracted into a separate repository.
+Its live-account qualification and PhotoFlow UI integration remain pending.
 
 ## Development
 

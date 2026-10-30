@@ -1,7 +1,9 @@
 # ADR 0003: Google Photos retention and metadata round trips
 
-Status: Proposed adapter architecture; user retention requirements recorded —
-2026-10-30. No Google integration or cloud mutation is implemented by this ADR.
+Status: Library architecture accepted — 2026-10-30. The standalone package and
+capture tooling are implemented in `packages/google-photos`; live-account
+qualification and application integration remain pending. Production cloud
+mutations are not enabled.
 
 ## Intent and retention requirements
 
@@ -135,6 +137,15 @@ there is still a race with concurrent Google edits and no promise that a bad
 provider call cannot have a side effect before returning an error.
 
 ## Qualification and TDD gates
+
+Current delivery: the standalone ESM package implements strict reads, pure
+retention decisions, guarded favorite/trash/restore execution, durable Node
+journals, documented API uploads, and passive Chrome/Edge/CDP capture tools.
+Synthetic Chromium tests exercise the actual extension without real Google
+traffic. Sanitized pinned upstream fixtures supplement behavioral tests. The
+browser adapter supplied to users is read-only; no live mutation qualification
+has been issued. See [package documentation](../../../../packages/google-photos/README.md)
+for precise supported features, ports, installation, and remaining work.
 
 1. Pure retention tests, including missing versus invalid metadata, incomplete
    export, changed revisions, generated versus curated albums, and unknown facts.

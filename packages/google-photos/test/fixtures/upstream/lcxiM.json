@@ -1,0 +1,128 @@
+[
+  [
+    [
+      "fixture-1",
+      [
+        "fixture-2",
+        1080,
+        1920,
+        null,
+        null,
+        null,
+        null,
+        null,
+        [null, null, 1],
+        [8877406]
+      ],
+      1761753048000,
+      "fixture-3",
+      3600000,
+      1761755803160,
+      null,
+      [
+        [1],
+        [2],
+        [3],
+        [8],
+        [21],
+        [14],
+        [15],
+        [19],
+        [22],
+        [28, false, true],
+        [29, false, true],
+        [35, false, true]
+      ],
+      2,
+      null,
+      null,
+      null,
+      null,
+      false,
+      53246,
+      {
+        "76647426": [
+          22932,
+          null,
+          1080,
+          1920,
+          null,
+          4,
+          134,
+          null,
+          [[1, null, 1080, 1920]],
+          false,
+          null,
+          null,
+          null,
+          ["fixture-4"]
+        ],
+        "129168200": [[], [null, null, null, false]],
+        "163238866": [false]
+      }
+    ],
+    [
+      "fixture-5",
+      [
+        "fixture-6",
+        1080,
+        1920,
+        null,
+        null,
+        null,
+        null,
+        null,
+        [null, null, 1],
+        [7305590]
+      ],
+      1761738241000,
+      "fixture-7",
+      3600000,
+      1761755126639,
+      null,
+      [
+        [1],
+        [2],
+        [3],
+        [8],
+        [21],
+        [14],
+        [15],
+        [19],
+        [22],
+        [28, false, true],
+        [29, false, true],
+        [35, false, true]
+      ],
+      2,
+      null,
+      null,
+      null,
+      null,
+      false,
+      53242,
+      {
+        "76647426": [
+          33153,
+          null,
+          1080,
+          1920,
+          null,
+          4,
+          134,
+          null,
+          [[1, null, 1080, 1920]],
+          false,
+          null,
+          null,
+          null,
+          ["fixture-8"]
+        ],
+        "129168200": [[], [null, null, null, false]],
+        "163238866": [false]
+      }
+    ]
+  ],
+  "fixture-9",
+  "1700000000000"
+]

@@ -91,5 +91,6 @@ metadata is not evidence that a remote photo does not exist. Do not infer
 deletion permission from a normal ingestion run or from a failed backup lookup.
 
 Cloud upload and cleanup proposals are described in
-[ADR 0003](apps/web/spec/adr/0003-google-photos-reconciliation.md). That proposal
-does not mean the integration exists or that a cloud mutation has been enabled.
+[ADR 0003](apps/web/spec/adr/0003-google-photos-reconciliation.md). The standalone
+library/capture package is implemented; live qualification and application
+integration are pending, and production cloud mutations are not enabled.

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  />
+  <title>Google Photos capture</title
+  ><link rel="stylesheet" href="popup.css" />
+  <main>
+    <h1>Google Photos capture</h1>
+    <p>
+      Record a small test interaction in the active Google Photos tab. This tool
+      never changes photos or replays requests.
+    </p>
+    <div class="buttons">
+      <button id="start">Start capture</button
+      ><button id="stop">Stop capture</button
+      ><button id="export">Download capture</button>
+    </div>
+    <p>
+      Cookies, tokens, image bytes, and text values are excluded or replaced.
+      Captures preserve structure, not original values. Review before sharing.
+    </p>
+    <hr />
+    <button id="identity">Check connection</button
+    ><button id="inventory">Read inventory counts</button>
+    <p>
+      Inventory inspection sends read requests. It does not authorize cleanup.
+    </p>
+    <output id="status" role="status" aria-live="polite">Ready</output>
+  </main>
+  <script type="module" src="popup.js"></script>
+</html>
