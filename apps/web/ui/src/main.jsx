@@ -453,7 +453,7 @@ function App() {
           <>
             <section className="grid">
               {items.map((d) => (
-                <article className="tile" key={d.id}>
+                <article className="tile" key={d.id} data-record-id={d.id}>
                   <input
                     aria-label="Select photo"
                     type="checkbox"
@@ -726,16 +726,23 @@ function MetadataEditor({ record, cancel, save }) {
     </div>
   );
 }
+const previewBlobs = new Map();
+function rememberPreview(key, blob) {
+  previewBlobs.delete(key);
+  previewBlobs.set(key, blob);
+  while (previewBlobs.size > 128)
+    previewBlobs.delete(previewBlobs.keys().next().value);
+}
 function Thumb({ id, level = 512 }) {
-  let [src, A] = S(null),
-    [failed, F] = S(false),
-    [visible, Z] = S(false),
+  const [src, setSrc] = S(null),
+    [failed, setFailed] = S(false);
+  const [visible, setVisible] = S(false),
     ref = React.useRef(null);
   E(() => {
-    let observer = new IntersectionObserver(
+    const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          Z(true);
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
           observer.disconnect();
         }
       },
@@ -748,25 +755,35 @@ function Thumb({ id, level = 512 }) {
     if (!visible) return;
     let done = false,
       timer;
-    async function get() {
+    setFailed(false);
+    const cached =
+      previewBlobs.get(`${id}:${level}`) ||
+      (level > 512 && previewBlobs.get(`${id}:512`));
+    setSrc(cached ? URL.createObjectURL(cached) : null);
+    async function get(requestedLevel, fallback = false) {
       try {
-        let r = await fetch(`/api/v1/photos/${id}/variants/${level}`);
+        const response = await fetch(
+          `/api/v1/photos/${id}/variants/${requestedLevel}`,
+        );
         if (done) return;
-        if (r.status === 202) {
-          timer = setTimeout(get, 1500);
+        if (response.status === 202) {
+          timer = setTimeout(() => get(requestedLevel, fallback), 1500);
           return;
         }
-        if (!r.ok) {
-          F(true);
+        if (!response.ok) {
+          setFailed(true);
+          if (requestedLevel > 512 && !fallback && !cached) get(512, true);
           return;
         }
-        let url = URL.createObjectURL(await r.blob());
-        A(url);
+        const blob = await response.blob();
+        if (done) return;
+        rememberPreview(`${id}:${requestedLevel}`, blob);
+        setSrc(URL.createObjectURL(blob));
       } catch {
-        F(true);
+        if (!done) setFailed(true);
       }
     }
-    get();
+    get(level);
     return () => {
       done = true;
       clearTimeout(timer);
@@ -779,7 +796,13 @@ function Thumb({ id, level = 512 }) {
     [src],
   );
   return src ? (
-    <img ref={ref} src={src} alt="Library photograph" loading="lazy" />
+    <img
+      ref={ref}
+      src={src}
+      alt="Library photograph"
+      title={failed ? "Showing smaller preview" : undefined}
+      loading="lazy"
+    />
   ) : (
     <div ref={ref} className="placeholder">
       {failed ? "Preview unavailable" : "◌"}

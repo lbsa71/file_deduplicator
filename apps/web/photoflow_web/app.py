@@ -540,9 +540,10 @@ def create_app(root=None, state=None, auth=None, role_resolver=None):
             if sum(p.stat().st_size for _, p in records) > 20 * 1024**3:
                 raise ValueError("Export exceeds 20 GiB")
             import shutil
-            estimated=sum(p.stat().st_size for _,p in records)
-            if shutil.disk_usage(library.state).free-estimated<2*1024**3:
-                raise OSError('Insufficient export disk space')
+
+            estimated = sum(p.stat().st_size for _, p in records)
+            if shutil.disk_usage(library.state).free - estimated < 2 * 1024**3:
+                raise OSError("Insufficient export disk space")
             base = library.state / "exports"
             base.mkdir(exist_ok=True)
             temporary = base / (export_id + ".partial")
@@ -552,9 +553,9 @@ def create_app(root=None, state=None, auth=None, role_resolver=None):
                 for record, path in records:
                     name = Path(record["sources"][0]["original_filename"]).name
                     name = record["record_id"] + "-" + name.replace("\\", "_")
-                    before = path.stat()
+                    before = library.fs.stat(record["file"]["relative_path"])
                     archive.write(path, name)
-                    if before != path.stat():
+                    if before != library.fs.stat(record["file"]["relative_path"]):
                         raise Conflict("Original changed during export")
                     if body.get("include_metadata"):
                         archive.writestr(

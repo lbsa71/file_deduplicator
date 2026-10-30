@@ -23,8 +23,45 @@ await page.getByRole("button", { name: "Sign in", exact: true }).click();
 await page.locator(".tile").first().waitFor({ timeout: 60000 });
 await page.locator(".tile img").first().waitFor({ timeout: 60000 });
 await page.screenshot({ path: "/tmp/photoflow-desktop.png" });
-await page.locator(".tile>button").first().click();
+const records = await page.evaluate(async () =>
+  (await fetch("/api/v1/photos")).json(),
+);
+const still = records.items.find((record) =>
+  /\.(jpe?g|png|heic)$/i.test(record.path),
+);
+if (!still) throw Error("No still image on the first page");
+const tile = page.locator(`[data-record-id="${still.id}"]`);
+await tile.scrollIntoViewIfNeeded();
+await tile.locator("img").waitFor({ timeout: 60000 });
+if (process.env.PHOTOFLOW_TEST_PREVIEW_FALLBACK === "1") {
+  await page.route(`**/photos/${still.id}/variants/2048`, (route) =>
+    route.fulfill({
+      status: 415,
+      contentType: "application/json",
+      body: '{"state":"failed"}',
+    }),
+  );
+}
+const fullPreview = page.waitForResponse(
+  (response) =>
+    response.url().endsWith(`/photos/${still.id}/variants/2048`) &&
+    response.status() ===
+      (process.env.PHOTOFLOW_TEST_PREVIEW_FALLBACK === "1" ? 415 : 200),
+  { timeout: 60000 },
+);
+await tile.locator("button").click();
 await page.locator(".viewer").waitFor();
+const previewResponse = await fullPreview;
+if (
+  process.env.PHOTOFLOW_TEST_PREVIEW_FALLBACK !== "1" &&
+  !previewResponse.headers()["content-type"].startsWith("image/webp")
+) {
+  throw Error("Viewer did not receive a browser-ready image");
+}
+await page.locator(".viewer img").waitFor({ timeout: 60000 });
+if (process.env.PHOTOFLOW_TEST_PREVIEW_FALLBACK === "1") {
+  await page.locator('.viewer img[title="Showing smaller preview"]').waitFor();
+}
 await page.keyboard.press("Escape");
 if (await page.locator(".viewer").count())
   throw Error("Escape did not close viewer");

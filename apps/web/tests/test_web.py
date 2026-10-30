@@ -277,3 +277,145 @@ class LibraryTests(unittest.TestCase):
             )
         self.assertTrue(watcher.meaningful("photos/missing.jpg"))
         self.assertTrue(watcher.meaningful("photos/missing.jpg.photo.json"))
+
+    def test_preview_allows_read_access_time_updates(self):
+        import os, hashlib
+        from PIL import Image
+        from photoflow_web.media import Media
+
+        source = self.root / "photo.jpg"
+        Image.new("RGB", (100, 80), "blue").save(source)
+        sha = hashlib.sha256(source.read_bytes()).hexdigest()
+        os.utime(source, ns=(0, source.stat().st_mtime_ns))
+        record = {
+            "file": {
+                "relative_path": "photo.jpg",
+                "sha256": sha,
+                "fingerprint": self.lib.fs.stat("photo.jpg").to_dict(),
+            },
+            "resolved": {},
+        }
+        media = Media(self.lib, self.root / "cache")
+        target = media.cache / "aa" / "preview.webp"
+        before = source.stat()
+        media.render(record, 2048, target, "test")
+        after = source.stat()
+        self.assertNotEqual(before.st_atime_ns, after.st_atime_ns)
+        self.assertEqual(before.st_mtime_ns, after.st_mtime_ns)
+        self.assertTrue(target.exists(), media.failed)
+
+    def test_preview_still_rejects_content_changes_during_decode(self):
+        import hashlib
+        from PIL import Image
+        from unittest.mock import patch
+        from photoflow_web.media import Media
+
+        source = self.root / "photo.jpg"
+        Image.new("RGB", (100, 80), "blue").save(source)
+        record = {
+            "file": {
+                "relative_path": "photo.jpg",
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                "fingerprint": self.lib.fs.stat("photo.jpg").to_dict(),
+            },
+            "resolved": {},
+        }
+        media = Media(self.lib, self.root / "cache")
+        target = media.cache / "aa" / "preview.webp"
+
+        def changed(command, **kwargs):
+            Image.new("RGB", (10, 10), "blue").save(
+                str(command[-1]).split("[")[0], "WEBP"
+            )
+            source.write_bytes(b"new content")
+
+        with patch("photoflow_web.media.subprocess.run", side_effect=changed):
+            media.render(record, 2048, target, "test")
+        self.assertFalse(target.exists())
+        self.assertEqual(media.failed["test"], "ValueError")
+
+    def test_bounded_heic_worker_produces_browser_preview(self):
+        import subprocess, sys
+        from PIL import Image
+        import pillow_heif
+
+        pillow_heif.register_heif_opener(decode_threads=1)
+        source = self.root / "sample.heic"
+        target = self.root / "preview.webp"
+        Image.new("RGB", (128, 96), "blue").save(
+            source,
+            "HEIF",
+            quality=60,
+            enc_params={"x265:pools": "1", "x265:frame-threads": "1"},
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "photoflow_web.decoder",
+                sys.executable,
+                "-m",
+                "photoflow_web.heic",
+                str(source),
+                "64",
+                str(target),
+            ],
+            check=True,
+            timeout=15,
+            capture_output=True,
+        )
+        with Image.open(target) as result:
+            self.assertEqual(result.format, "WEBP")
+            self.assertEqual(result.size, (64, 48))
+            self.assertFalse(result.getexif())
+            self.assertFalse(result.info.get("icc_profile"))
+
+    def test_export_allows_read_access_time_updates(self):
+        import os, time
+        from PIL import Image
+        from fastapi.testclient import TestClient
+        from photoflow_web.app import create_app
+        from photoflow.adapters import NoEmbeddedMetadata, RandomIds, SystemClock
+        from photoflow.runner import Runner, Config
+
+        (self.root / "inbox").mkdir()
+        Image.new("RGB", (100, 80), "blue").save(self.root / "inbox/photo.jpg")
+        Runner(
+            self.lib.fs,
+            SystemClock(),
+            RandomIds(),
+            NoEmbeddedMetadata(),
+            Config(settle_seconds=0),
+        ).run()
+        self.lib.rebuild()
+        ident = self.lib.listing()["items"][0]["id"]
+        record = self.lib.get(ident)
+        source = self.root / record["file"]["relative_path"]
+        os.utime(source, ns=(0, source.stat().st_mtime_ns))
+        app = create_app(
+            self.root,
+            self.root / "state",
+            auth=lambda d: {"ok": True, "uid": 123},
+            role_resolver=lambda n: 1,
+        )
+        with TestClient(app, base_url="https://testserver") as client:
+            response = client.post(
+                "/api/v1/auth/login",
+                headers={"Origin": "https://testserver"},
+                json={"username": "test", "password": "secret"},
+            )
+            response.raise_for_status()
+            headers = {
+                "Origin": "https://testserver",
+                "X-CSRF-Token": response.json()["csrf"],
+            }
+            response = client.post(
+                "/api/v1/exports", json={"ids": [ident]}, headers=headers
+            )
+            response.raise_for_status()
+            for _ in range(100):
+                status = client.get("/api/v1/jobs/" + response.json()["job_id"]).json()
+                if status["state"] in ("failed", "succeeded"):
+                    break
+                time.sleep(0.01)
+            self.assertEqual(status["state"], "succeeded", status)

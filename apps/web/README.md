@@ -16,6 +16,14 @@ manual moves, persistent user-folder creation/rename, photo/folder trash and
 restore, reconciliation jobs, five thumbnail levels, and native video playback.
 Unplayable codecs retain their original download and a poster where supported.
 
+Takeout's `favorited` flag is imported into Favorites, while explicit user choices
+take precedence. The viewer displays a cached grid preview immediately and keeps
+it if the larger preview fails. JPEG/PNG/etc. previews use libvips; HEIC/HEIF uses
+the bounded, single-threaded `pillow-heif` worker to avoid the system decoder's
+HEIC stalls. All delivered still-image previews are WebP, so browser HEIC support
+is not required. Decoder stability checks ignore normal access-time changes and
+still reject content/identity changes during rendering and export.
+
 Login uses the separate PAM broker; the HTTP process is unprivileged. Linux groups
 `photoflow-readers`, `photoflow-editors`, and `photoflow-admins` grant increasing
 roles. `stefan` is an administrator on the installed server. Restart invalidates

@@ -1,9 +1,11 @@
 """Bounded, deduplicated thumbnail jobs outside HTTP handlers."""
 
 import concurrent.futures, hashlib, os, subprocess, threading
+import logging
 from pathlib import Path
 import shutil
 import time
+import sys
 
 
 class Media:
@@ -27,8 +29,14 @@ class Media:
             "file"
         ].get("fingerprint"):
             raise ValueError("Source changed; reconcile the library before rendering")
+        recipe = (
+            "heic-v2"
+            if Path(record["file"]["relative_path"]).suffix.lower()
+            in (".heic", ".heif")
+            else "v1"
+        )
         key = hashlib.sha256(
-            f"{record['file']['sha256']}:v1:{record['resolved'].get('display_rotation',0)}:{level}".encode()
+            f"{record['file']['sha256']}:{recipe}:{record['resolved'].get('display_rotation',0)}:{level}".encode()
         ).hexdigest()
         p = self.cache / key[:2] / (key + ".webp")
         if p.exists():
@@ -47,7 +55,9 @@ class Media:
                 raise OSError("Thumbnail disk is low on space")
             self.collect_cache()
             source = self.library.path(record["file"]["relative_path"])
-            before = source.stat()
+            before = self.library.fs.stat(record["file"]["relative_path"])
+            if before.to_dict() != record["file"].get("fingerprint"):
+                raise ValueError("Source changed before rendering")
             target.parent.mkdir(exist_ok=True)
             temp = target.with_name(target.stem + ".tmp.webp")
             video = source.suffix.lower() in (
@@ -59,7 +69,16 @@ class Media:
                 ".mts",
                 ".3gp",
             )
-            if video:
+            if source.suffix.lower() in (".heic", ".heif"):
+                command = [
+                    sys.executable,
+                    "-m",
+                    "photoflow_web.heic",
+                    str(source),
+                    str(level),
+                    str(temp),
+                ]
+            elif video:
                 command = [
                     "ffmpeg",
                     "-nostdin",
@@ -91,8 +110,6 @@ class Media:
                     "-o",
                     str(temp) + "[Q=80,strip]",
                 ]
-            import sys
-
             subprocess.run(
                 [sys.executable, "-m", "photoflow_web.decoder", *command],
                 check=True,
@@ -106,11 +123,17 @@ class Media:
 
                 with Image.open(temp) as image:
                     image.rotate(-rotation, expand=True).save(temp, "WEBP", quality=80)
-            if source.stat() != before:
+            if self.library.fs.stat(record["file"]["relative_path"]) != before:
                 raise ValueError("Source changed")
             os.replace(temp, target)
         except Exception as error:
             self.failed[key] = type(error).__name__
+            logging.getLogger(__name__).warning(
+                "Preview failed: record=%s level=%s reason=%s",
+                record.get("record_id", "unknown"),
+                level,
+                error,
+            )
         finally:
             if temp is not None:
                 temp.unlink(missing_ok=True)

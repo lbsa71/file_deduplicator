@@ -133,6 +133,11 @@ present, is an album assertion. Folder membership never creates a person label.
 
 Takeout `people[].name` becomes photo-level person labels. `photoTakenTime`
 supplies a capture timestamp; Google upload/creation time is not substituted.
+Takeout `favorited: true` becomes `resolved.favorite: true`, with its source in
+provenance. A favorite assertion in any current source is retained; an explicit
+`overrides.favorite` value takes precedence, including `false` to unfavorite it.
+Resetting that override restores imported resolution. Resolver version 2 refreshes
+existing records without requiring new embedded extraction or moving files.
 Original JSON is never rewritten or removed. Its parsed content and unknown
 fields are embedded in the managed record. Retain the original Takeout ZIPs for
 the original byte representation and full export context.

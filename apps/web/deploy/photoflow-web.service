@@ -15,6 +15,7 @@ StateDirectory=photoflow-web
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=600
+TimeoutStopSec=600
 NoNewPrivileges=true
 PrivateTmp=true
 IPAddressDeny=any

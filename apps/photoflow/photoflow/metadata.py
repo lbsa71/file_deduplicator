@@ -12,7 +12,7 @@ from .content import stable
 from .ports import ChangedError
 from .source_cache import SourceCache
 
-RESOLVER_VERSION = 'takeout-and-exif-v1'
+RESOLVER_VERSION = 'takeout-and-exif-v2'
 
 
 def read_document(fs, path, kind):
@@ -149,7 +149,7 @@ def valid_date(value):
 
 
 def resolve(record):
-    provenance = {k: [] for k in ('capture_time', 'people', 'albums', 'description')}
+    provenance = {k: [] for k in ('capture_time', 'people', 'albums', 'description', 'favorite')}
 
     def add(field, value, source, detail):
         if value is not None and value != '':
@@ -185,6 +185,8 @@ def resolve(record):
                 if isinstance(title, str):
                     add('albums', title, origin, 'title')
                 continue
+            if type(raw.get('favorited')) is bool:
+                add('favorite', raw['favorited'], origin, 'favorited')
             taken = raw.get('photoTakenTime')
             if isinstance(taken, dict) and 'timestamp' in taken:
                 try:
@@ -203,6 +205,8 @@ def resolve(record):
     for field, assertions in provenance.items():
         if field in ('people', 'albums'):
             resolved[field] = sorted({a['value'] for a in assertions})
+        elif field == 'favorite':
+            resolved[field] = any(a['value'] is True for a in assertions)
         elif assertions:
             resolved[field] = assertions[0]['value']
     for field, value in record.data['overrides'].items():
