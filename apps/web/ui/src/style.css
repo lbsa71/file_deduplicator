@@ -331,3 +331,34 @@ select {
   padding: 8px;
   margin-left: 15px;
 }
+/* These remain native links for copy/open-in-new-tab and keyboard navigation. */
+.nav-link {
+  display: block;
+  padding: 10px 16px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+.nav-link:hover {
+  background: #eef3fa;
+}
+.tile > .photo-link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.folder-link {
+  display: inline-block;
+  border: 1px solid #dce0e6;
+  border-radius: 8px;
+  background: white;
+  padding: 10px 16px;
+  color: inherit;
+  text-decoration: none;
+  margin: 6px;
+}
+.folder-link:hover {
+  background: #eef3fa;
+}

@@ -24,6 +24,7 @@ setup-web: setup
 
 test-web:
 	PYTHONPATH=apps/web:apps/photoflow $(PYTHON) -m unittest discover -s apps/web/tests -v
+	cd apps/web/ui && npm test
 
 build-web:
 	cd apps/web/ui && npm run build -- --outDir ../photoflow_web/static --emptyOutDir

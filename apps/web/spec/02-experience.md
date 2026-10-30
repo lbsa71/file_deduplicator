@@ -19,6 +19,11 @@ Routes: `/login`, `/photos`, `/folders?path=...`, `/favorites`, `/duplicates`,
 in URL parameters. A reload/deep link works after login. Validate the login return
 URL as same-origin. Unauthorized routes reveal no counts, filenames, or images.
 
+Canonical folder links also support `/folders/<root-relative-path>`, for example
+`/folders/photos/2000/09`; the query-form route remains supported. Photo URLs use
+the stable record ID and retain collection context when opened from a folder or
+search. Closing the viewer returns to that context.
+
 ## Collection and selection
 
 Search title, description, original filename aliases, people, albums, tags, and

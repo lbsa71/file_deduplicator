@@ -1,34 +1,169 @@
 import React, { useState as S, useEffect as E } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
+import { parseRoute, routeURL, followLink } from "./routes.js";
 function App() {
-  const [user, U] = S(null),
+  const [user, setUser] = S(null),
     [error, X] = S(""),
     [items, I] = S([]),
     [total, T] = S(0),
-    [tab, B] = S("Photos"),
-    [query, Q] = S(""),
-    [folder, F] = S("."),
     [folders, G] = S([]),
     [registered, R] = S([]),
-    [view, V] = S(null),
+    [view, setView] = S(null),
     [busy, W] = S(""),
     [jobs, J] = S([]),
-    [offset, O] = S(0),
     [selected, C] = S(new Set()),
     [editing, K] = S(null),
     [trashFolders, H] = S([]);
+  const authRef = React.useRef(null);
+  function U(value) {
+    authRef.current = value;
+    setUser(value);
+  }
+  const [route, setRoute] = S(() => parseRoute(window.location.href));
+  const routeRef = React.useRef(route),
+    loadSequence = React.useRef(0),
+    refresh = React.useRef(null),
+    pendingScroll = React.useRef(null);
+  const { tab, query, folder, offset } = route;
+  function collectionKey(value) {
+    return routeURL({ ...value, photoId: null, login: false, next: null });
+  }
+  function prepareCollection(current, next, scroll) {
+    if (collectionKey(current) !== collectionKey(next)) {
+      loadSequence.current++;
+      I([]);
+      G([]);
+      T(0);
+      pendingScroll.current = scroll;
+    }
+  }
+  function navigate(value, options = {}) {
+    const next = typeof value === "string" ? parseRoute(value) : value;
+    const url = routeURL(next),
+      current = routeRef.current;
+    if (url === window.location.pathname + window.location.search) return;
+    history.replaceState(
+      { ...history.state, scroll: window.scrollY },
+      "",
+      window.location.href,
+    );
+    history[options.replace ? "replaceState" : "pushState"](
+      {
+        viewerBackground: options.viewerBackground || null,
+        scroll: options.scroll || 0,
+      },
+      "",
+      url,
+    );
+    prepareCollection(current, next, options.scroll || 0);
+    routeRef.current = next;
+    setRoute(next);
+    X("");
+    if (!next.photoId) setView(null);
+    if (!next.photoId && !current.photoId)
+      window.scrollTo(0, options.scroll || 0);
+  }
+  function updateRoute(patch, options = {}) {
+    navigate(
+      { ...routeRef.current, ...patch, login: false, next: null },
+      options,
+    );
+  }
+  function Q(value) {
+    updateRoute(
+      { query: value, photoId: null, offset: 0 },
+      { replace: !!routeRef.current.query },
+    );
+  }
+  function F(value) {
+    updateRoute({ tab: "Folders", folder: value, photoId: null, offset: 0 });
+  }
+  function O(value) {
+    updateRoute({ offset: value, photoId: null });
+  }
+  function closePhoto() {
+    const current = routeRef.current;
+    if (!current.photoId) {
+      setView(null);
+      return;
+    }
+    const background = { ...current, photoId: null };
+    if (history.state?.viewerBackground === routeURL(background))
+      history.back();
+    else
+      navigate(background, {
+        replace: true,
+        scroll: history.state?.scroll || 0,
+      });
+  }
+  function V(value) {
+    if (value === null) closePhoto();
+    else setView(value);
+  }
+  E(() => {
+    const old = history.scrollRestoration;
+    history.scrollRestoration = "manual";
+    const pop = () => {
+      const next = parseRoute(window.location.href);
+      const current = routeRef.current;
+      prepareCollection(current, next, history.state?.scroll || 0);
+      routeRef.current = next;
+      setRoute(next);
+      if (current.photoId !== next.photoId || !next.photoId) setView(null);
+      X("");
+      requestAnimationFrame(() =>
+        window.scrollTo(0, history.state?.scroll || 0),
+      );
+    };
+    window.addEventListener("popstate", pop);
+    if (window.location.pathname === "/")
+      navigate(routeRef.current, { replace: true });
+    return () => {
+      window.removeEventListener("popstate", pop);
+      history.scrollRestoration = old;
+    };
+  }, []);
+  E(() => {
+    if (user && route.login)
+      navigate(route.next || "/photos", { replace: true });
+  }, [user, route.login, route.next]);
+  E(() => {
+    let cancelled = false;
+    setView(null);
+    if (user && route.photoId)
+      api("/photos/" + encodeURIComponent(route.photoId))
+        .then((value) => {
+          if (!cancelled) setView(value);
+        })
+        .catch((error) => {
+          if (!cancelled) X("Photo unavailable: " + error.message);
+        });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, route.photoId]);
   async function api(path, method = "GET", body, revision) {
+    const requestUser = authRef.current;
     let r = await fetch("/api/v1" + path, {
       method,
       headers: {
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-        ...(user ? { "X-CSRF-Token": user.csrf } : {}),
+        ...(requestUser ? { "X-CSRF-Token": requestUser.csrf } : {}),
         ...(revision ? { "If-Match": `"${revision}"` } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!r.ok) {
+      if (
+        r.status === 401 &&
+        requestUser &&
+        authRef.current === requestUser &&
+        path !== "/auth/login"
+      ) {
+        U(null);
+        setView(null);
+      }
       let e = await r.json().catch(() => ({ detail: r.statusText }));
       throw Error(
         typeof e.detail === "string" ? e.detail : JSON.stringify(e.detail),
@@ -37,6 +172,8 @@ function App() {
     return r.status === 204 ? null : r.json();
   }
   async function load() {
+    if (!user) return;
+    const sequence = ++loadSequence.current;
     try {
       let p = new URLSearchParams({
         q: query,
@@ -47,18 +184,37 @@ function App() {
         duplicates: String(tab === "Duplicates" || tab === "Folders"),
       });
       if (tab === "Folders" && folder !== ".") p.set("folder", folder);
-      let d = await api("/photos?" + p);
+      const [d, directories, trash, jobs, library] = await Promise.all([
+        api("/photos?" + p),
+        tab === "Folders"
+          ? api("/folders?path=" + encodeURIComponent(folder))
+          : null,
+        tab === "Trash" ? api("/trash/folders") : null,
+        tab === "Activity" ? api("/jobs") : null,
+        api("/library"),
+      ]);
+      if (sequence !== loadSequence.current) return;
       I(d.items);
       T(d.total);
-      if (tab === "Trash") H((await api("/trash/folders")).items);
-      if (tab === "Folders")
-        G((await api("/folders?path=" + encodeURIComponent(folder))).items);
-      if (tab === "Activity") J((await api("/jobs")).items);
-      R((await api("/library")).folders);
+      if (directories) G(directories.items);
+      if (trash) H(trash.items);
+      if (jobs) J(jobs.items);
+      R(library.folders);
+      if (pendingScroll.current !== null)
+        requestAnimationFrame(() => {
+          if (
+            sequence === loadSequence.current &&
+            pendingScroll.current !== null
+          ) {
+            window.scrollTo(0, pendingScroll.current);
+            pendingScroll.current = null;
+          }
+        });
     } catch (e) {
-      X(e.message);
+      if (sequence === loadSequence.current) X(e.message);
     }
   }
+  refresh.current = load;
   E(() => {
     let close = (e) => {
       if (e.key === "Escape") {
@@ -71,7 +227,9 @@ function App() {
   }, []);
   E(() => {
     api("/auth/session")
-      .then(U)
+      .then((value) => {
+        if (!authRef.current) U(value);
+      })
       .catch(() => {});
   }, []);
   E(() => {
@@ -90,19 +248,22 @@ function App() {
           await new Promise((r) => setTimeout(r, 500));
         }
       }
-      await load();
+      await refresh.current();
     } catch (e) {
       X(e.message);
     } finally {
       W("");
     }
   }
-  async function open(id) {
-    try {
-      V(await api("/photos/" + id));
-    } catch (e) {
-      X(e.message);
-    }
+  function open(id) {
+    const current = routeRef.current;
+    navigate(
+      { ...current, photoId: id },
+      {
+        viewerBackground: routeURL({ ...current, photoId: null }),
+        scroll: window.scrollY,
+      },
+    );
   }
   async function edit(d) {
     K(d);
@@ -242,17 +403,27 @@ function App() {
           "Trash",
           "Activity",
         ].map((t) => (
-          <button
-            className={tab === t ? "active" : ""}
-            onClick={() => {
-              B(t);
-              O(0);
-              C(new Set());
-            }}
+          <a
+            href={routeURL({
+              ...route,
+              tab: t,
+              query: "",
+              folder: ".",
+              offset: 0,
+              photoId: null,
+              login: false,
+            })}
+            className={"nav-link " + (tab === t ? "active" : "")}
+            onClick={(event) =>
+              followLink(event, (url) => {
+                navigate(url);
+                C(new Set());
+              })
+            }
             key={t}
           >
             {t}
-          </button>
+          </a>
         ))}
         <footer>
           {user.username}
@@ -262,7 +433,12 @@ function App() {
                 await api("/auth/logout", "POST", {});
                 U(null);
                 I([]);
-                V(null);
+                setView(null);
+                navigate(
+                  "/login?next=" +
+                    encodeURIComponent(routeURL(routeRef.current)),
+                  { replace: true },
+                );
               })
             }
           >
@@ -406,15 +582,20 @@ function App() {
             )}
             <div>
               {folders.map((f) => (
-                <button
+                <a
+                  className="folder-link"
                   key={f.path}
-                  onClick={() => {
-                    F(f.path);
-                    O(0);
-                  }}
+                  href={routeURL({
+                    ...route,
+                    tab: "Folders",
+                    folder: f.path,
+                    offset: 0,
+                    photoId: null,
+                  })}
+                  onClick={(event) => followLink(event, navigate)}
                 >
                   📁 {f.name}
-                </button>
+                </a>
               ))}
             </div>
           </section>
@@ -466,7 +647,11 @@ function App() {
                       })
                     }
                   />
-                  <button onClick={() => open(d.id)}>
+                  <a
+                    className="photo-link"
+                    href={routeURL({ ...route, photoId: d.id })}
+                    onClick={(event) => followLink(event, () => open(d.id))}
+                  >
                     {tab === "Trash" ? (
                       <div className="placeholder">In trash</div>
                     ) : (
@@ -479,7 +664,7 @@ function App() {
                         "Undated"}
                       {d.metadata.favorite ? " ♥" : ""}
                     </div>
-                  </button>
+                  </a>
                 </article>
               ))}
             </section>

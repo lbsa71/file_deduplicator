@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "test": "node --test src/routes.test.js"
   },
   "dependencies": {
     "react": "^19.0.0",

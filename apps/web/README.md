@@ -9,6 +9,28 @@ The direct LAN address **https://192.168.1.4:8443/** remains available with its
 self-signed certificate. The public hostname does not require trusting that LAN
 certificate.
 
+## Direct URLs
+
+Views are addressable and survive refresh, browser Back/Forward, and opening a
+copied link in another tab. Sign-in preserves the requested destination.
+
+| URL | View |
+| --- | --- |
+| `/photos` | Timeline |
+| `/photos/<record-id>` | A photo or video's viewer; the ID survives filesystem moves |
+| `/folders/photos/2000/09` | An editable root-relative folder path in the URL |
+| `/folders?path=photos%2F2000%2F09` | Supported query-form folder link |
+| `/favorites`, `/duplicates`, `/trash`, `/activity` | Main views |
+| `/photos?q=00010005`, `/favorites?q=Alma` | Search within a view |
+| `/photos?offset=100` | A later page of results |
+| `/login?next=%2Ffavorites` | Sign in and return to an internal destination |
+
+Photo links also retain collection context in `view`, `path`, `q`, and `offset`
+parameters when needed. Folder paths follow the current filesystem layout; photo
+IDs provide stable links across moves. Navigation/photo/folder links support
+native copy-link and open-in-new-tab behavior. The server serves the UI shell for
+known routes; missing API endpoints and assets retain their 404 responses.
+
 The current application provides timeline/search/favorites/duplicate browsing,
 real folder navigation, multi-file uploads with resumable chunks, original and
 metadata downloads, selected-original ZIP exports, editable sourced metadata,
@@ -85,6 +107,7 @@ python3 -m venv .venv
 (cd apps/web/ui && npm ci && npm run build -- --outDir ../photoflow_web/static --emptyOutDir)
 PYTHONPATH=apps/web:apps/photoflow .venv/bin/python -m unittest discover -s apps/web/tests
 python3 -m unittest discover -s apps/photoflow -t apps/photoflow
+(cd apps/web/ui && npm test)
 ```
 
 For the installed host, rebuild the UI, then install the two packages non-editably:
@@ -108,6 +131,9 @@ For direct-LAN tests only, set `PHOTOFLOW_TEST_INSECURE=1` for the self-signed
 certificate. Public-host tests validate certificates normally. The optional
 `PHOTOFLOW_TEST_RESOLVE` passes a Chromium host-resolution rule for testing a new
 DNS record before local negative caches expire; it does not disable TLS validation.
+`node apps/web/ui/routing-smoke.mjs` uses the same test credentials/environment to
+check direct links, login return, refresh, new tabs, Back/Forward, folder paths,
+search persistence, redirect safety, and missing-resource responses.
 
 ## Current limits and remaining specification work
 

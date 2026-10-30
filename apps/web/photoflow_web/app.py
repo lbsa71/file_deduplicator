@@ -5,12 +5,12 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response
-from fastapi.staticfiles import StaticFiles
+from .frontend import FrontendFiles
 from .core import Library, Conflict, atomic, digest, load
 from .media import Media
 
 
-def create_app(root=None, state=None, auth=None, role_resolver=None):
+def create_app(root=None, state=None, auth=None, role_resolver=None, static_root=None):
     library = Library(
         root or os.environ["PHOTOFLOW_LIBRARY"],
         state or os.environ.get("PHOTOFLOW_STATE", "/var/lib/photoflow-web"),
@@ -619,9 +619,9 @@ def create_app(root=None, state=None, auth=None, role_resolver=None):
             raise KeyError(ident)
         return json.loads(r[0])
 
-    static = Path(__file__).parent / "static"
+    static = Path(static_root) if static_root else Path(__file__).parent / "static"
     if static.exists():
-        app.mount("/", StaticFiles(directory=static, html=True), name="ui")
+        app.mount("/", FrontendFiles(directory=static, html=True), name="ui")
     app.state.library = library
     return app
 

@@ -49,7 +49,7 @@ const fullPreview = page.waitForResponse(
       (process.env.PHOTOFLOW_TEST_PREVIEW_FALLBACK === "1" ? 415 : 200),
   { timeout: 60000 },
 );
-await tile.locator("button").click();
+await tile.locator(".photo-link").click();
 await page.locator(".viewer").waitFor();
 const previewResponse = await fullPreview;
 if (
@@ -63,8 +63,7 @@ if (process.env.PHOTOFLOW_TEST_PREVIEW_FALLBACK === "1") {
   await page.locator('.viewer img[title="Showing smaller preview"]').waitFor();
 }
 await page.keyboard.press("Escape");
-if (await page.locator(".viewer").count())
-  throw Error("Escape did not close viewer");
+await page.locator(".viewer").waitFor({ state: "hidden" });
 await page.setViewportSize({ width: 390, height: 844 });
 await page.screenshot({ path: "/tmp/photoflow-mobile.png" });
 if (errors.length) throw Error(errors.join("\n"));

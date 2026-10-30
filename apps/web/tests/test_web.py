@@ -419,3 +419,31 @@ class LibraryTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertEqual(status["state"], "succeeded", status)
+
+    def test_ui_deep_links_serve_shell_without_masking_api_or_assets(self):
+        from fastapi.testclient import TestClient
+        from photoflow_web.app import create_app
+
+        assets = self.root / "state/ui"
+        assets.mkdir(parents=True)
+        (assets / "index.html").write_text("<html>route-test-shell</html>")
+        app = create_app(self.root, self.root / "state", static_root=assets)
+        with TestClient(app, base_url="https://testserver") as client:
+            for path in (
+                "/photos",
+                "/photos/99b8980a-6721-4641-b41c-3d81e81c3b5d",
+                "/folders?path=photos%2F2000%2F09",
+                "/favorites?q=Alma",
+                "/trash",
+                "/activity",
+                "/duplicates",
+                "/login?next=%2Ffavorites",
+            ):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200, path)
+                self.assertIn("route-test-shell", response.text)
+            for path in ("/api/v1/missing", "/assets/missing.js", "/unknown"):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 404, path)
+                self.assertNotIn("route-test-shell", response.text)
+            self.assertEqual(client.head("/photos").status_code, 200)
