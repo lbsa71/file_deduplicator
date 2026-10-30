@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from photoflow.adapters import LocalFileSystem
 from photoflow.model import Record, SIDECAR, encoded
 from photoflow.metadata import resolve
+from .query import Query, TABLES, ORDER, create_indexes, index_record
 
 
 class Conflict(ValueError):
@@ -52,6 +53,10 @@ class Library:
         self.upload_dir = self.root / ".photoflow/uploads"
         self.ops = self.root / ".photoflow/web-operations"
         with self.db() as db:
+            # Keep compatibility with the host SQLite. Rebuilds commit bounded
+            # batches so rollback-journal readers wait for a batch, not a scan.
+            if db.execute("PRAGMA journal_mode=DELETE").fetchone()[0] != "delete":
+                raise OSError("Could not initialize the web catalog journal")
             db.execute(
                 "CREATE TABLE IF NOT EXISTS listing(id TEXT PRIMARY KEY,path TEXT,revision TEXT,metadata TEXT,search TEXT,duplicate INTEGER,trashed INTEGER,captured TEXT)"
             )
@@ -61,6 +66,7 @@ class Library:
             db.executescript(
                 "CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,path TEXT,revision TEXT,data TEXT,stamp TEXT); CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner TEXT,state TEXT,data TEXT);"
             )
+            create_indexes(db)
 
     @contextmanager
     def db(self):
@@ -211,6 +217,7 @@ class Library:
             if connection is not None
             else self.db()
         ) as db:
+            index_record(db, record)
             db.execute(
                 "INSERT OR REPLACE INTO listing VALUES(?,?,?,?,?,?,?,?)",
                 (
@@ -254,6 +261,13 @@ class Library:
 
     def _rebuild(self, connection):
         seen = []
+
+        def index(record, sidecar):
+            self.put_index(record, sidecar, connection)
+            seen.append(record["record_id"])
+            if len(seen) % 64 == 0:
+                connection.commit()
+
         for parent, dirs, files in os.walk(self.root):
             dirs[:] = [
                 d
@@ -269,21 +283,19 @@ class Library:
                 if p.is_symlink():
                     continue
                 record = Record.parse(p.read_bytes(), self.id).data
-                self.put_index(record, p, connection)
-                seen.append(record["record_id"])
+                index(record, p)
         for p in (self.root / ".photoflow/trash").glob("*/record.json"):
             d = load(p)
-            self.put_index(d, p, connection)
-            seen.append(d["record_id"])
+            index(d, p)
         connection.commit()
         with self.db() as db:
             ids = {r[0] for r in db.execute("SELECT id FROM photos")}
-            db.executemany(
-                "DELETE FROM photos WHERE id=?", [(i,) for i in ids - set(seen)]
-            )
-            db.executemany(
-                "DELETE FROM listing WHERE id=?", [(i,) for i in ids - set(seen)]
-            )
+            missing = sorted(ids - set(seen))
+            for start in range(0, len(missing), 64):
+                targets = [(ident,) for ident in missing[start : start + 64]]
+                for table in ("photos", "listing", "query_labels", "query_properties"):
+                    db.executemany(f"DELETE FROM {table} WHERE id=?", targets)
+                db.commit()
         return len(seen)
 
     def get(self, ident):
@@ -304,28 +316,19 @@ class Library:
         duplicates=False,
         favorite=False,
         trash=False,
+        filters=None,
     ):
-        conditions = ["trashed=?"]
-        params = [int(trash)]
-        if not duplicates and not folder and not trash:
-            conditions.append("duplicate=0")
-        if folder:
-            conditions.append("substr(path,1,?)=?")
-            params.extend([len(folder.rstrip("/") + "/"), folder.rstrip("/") + "/"])
-        if favorite:
-            conditions.append("json_extract(metadata,'$.favorite')=1")
-        if q:
-            conditions.append("instr(search,?)>0")
-            params.append(q.casefold())
-        where = " AND ".join(conditions)
+        query = Query(q, folder, duplicates, favorite, trash, filters)
+        where, params = query.where()
         with self.db() as db:
+            db.execute("BEGIN")
             total = db.execute(
-                "SELECT count(*) FROM listing WHERE " + where, params
+                f"SELECT count(*) FROM {TABLES} WHERE " + where, params
             ).fetchone()[0]
             rows = db.execute(
-                "SELECT * FROM listing WHERE "
+                f"SELECT l.* FROM {TABLES} WHERE "
                 + where
-                + " ORDER BY captured DESC,id LIMIT ? OFFSET ?",
+                + f" ORDER BY {ORDER} LIMIT ? OFFSET ?",
                 params + [limit, offset],
             ).fetchall()
         return {
@@ -342,6 +345,33 @@ class Library:
             "total": total,
             "next_offset": offset + limit if offset + limit < total else None,
         }
+
+    def matching(
+        self,
+        q="",
+        folder=None,
+        duplicates=False,
+        favorite=False,
+        trash=False,
+        filters=None,
+    ):
+        query = Query(q, folder, duplicates, favorite, trash, filters)
+        with self.db() as db:
+            return query.matching(db)
+
+    def facets(
+        self,
+        q="",
+        folder=None,
+        duplicates=False,
+        favorite=False,
+        trash=False,
+        filters=None,
+    ):
+        query = Query(q, folder, duplicates, favorite, trash, filters)
+        with self.db() as db:
+            db.execute("BEGIN")
+            return query.facets(db)
 
     def checked(self, ident, revision):
         record = self.get(ident)
@@ -412,10 +442,18 @@ class Library:
             self.put_index(d, p)
         return self.get(ident)
 
-    def move(self, ident, revision, folder_id, actor):
+    def move(self, ident, revision, folder_id, actor, *, expected_folder=None):
         with self.writer():
             d, p = self.checked(ident, revision)
             folder = self.folder(folder_id)
+            if expected_folder is not None and (
+                not folder
+                or any(
+                    folder.get(key) != expected_folder.get(key)
+                    for key in ("id", "revision", "path")
+                )
+            ):
+                raise Conflict("Destination folder changed; create a fresh preview")
             if not folder:
                 raise ValueError("Folder missing")
             old = d["file"]["relative_path"]

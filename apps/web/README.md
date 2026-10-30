@@ -135,13 +135,59 @@ DNS record before local negative caches expire; it does not disable TLS validati
 check direct links, login return, refresh, new tabs, Back/Forward, folder paths,
 search persistence, redirect safety, and missing-resource responses.
 
+## Visual queries and batch maintenance
+
+The [accepted design](spec/adr/0001-visual-querying-and-saved-views.md) uses coordinated
+People, Time, Favourite, Albums, Tags, media-type and missing-metadata filters.
+People supports Any/All; dates have a histogram, keyboard range slider and exact
+inputs. Facet values show contextual counts. Filter chips, browser Back/Forward,
+photo links, refresh and login return all preserve queries.
+
+Example: `/photos?person=Ellen&person=Viktor&people_mode=all&from=2009-01-01&to=2009-12-31`.
+Save view creates a private Linux-account shortcut; Manage renames, replaces its
+query, or deletes the shortcut. Saved views are live queries, independently of
+Google album labels. Back up `.photoflow/views/` alongside the other library intent.
+
+Select page retains explicit IDs and revisions across pages. Select all matching
+captures the whole query for 30 minutes, including unloaded results. Changing the
+query clears selection. Batch actions previews up to five before/after examples
+and the full target count before applying add/remove/replace/reset labels,
+favourites, capture dates, folder moves, trash or restore. Revision conflicts are
+skipped and reported; the original source documents remain preserved. Batch plans
+are single-use; an interrupted run requires a fresh reviewed selection. Admin
+maintenance modes operate on the whole library and are separate from selection.
+
+Rebuildable SQLite label/property indexes serve filtering without sidecar or
+original reads. A scratch benchmark copied from 24,283 live catalog rows measured
+warm medians of 10.4 ms for listing, 99.4 ms for facets, and 40.7 ms for a full ID
+snapshot on this server; these are local measurements, not network latency promises.
+Catalog rebuilds commit coherent batches of 64 records using a rollback journal,
+allowing reads between batches. During a scan, results reflect the latest committed
+incremental catalog rather than one whole-scan snapshot; a current batch may briefly
+delay a read. The installed SQLite runtime predates the WAL-reset fix, so WAL is
+deferred pending a patched runtime. Query measurements above were taken outside a
+running scan.
+
+Browser acceptance uses a disposable HTTPS fixture (never the real library):
+
+```sh
+make build-web
+PYTHONPATH=apps/web:apps/photoflow .venv/bin/python apps/web/tests/query_fixture.py
+# In another terminal, with Playwright Chromium installed and Node 20+:
+node apps/web/ui/query-smoke.mjs
+```
+
+The fixture creates 108 distinct photos and checks original hashes on shutdown.
+The browser exercises Any/All, date/favourite filters, query history, saved-view
+CRUD and a reviewed batch across pagination.
+
 ## Current limits and remaining specification work
 
 The [complete specification](spec/README.md) remains the target. This deployment is
 an initial implementation, not certification of every acceptance gate:
 
-- Timeline pages currently use bounded offset pagination, not frozen cursor
-  snapshots. Bulk selection covers explicitly selected records.
+- Timeline pages use bounded offset pagination. Select-all and batch operations
+  freeze their own IDs/revisions; normal page navigation is not a frozen snapshot.
 - Job statuses persist, but interrupted queued jobs are marked failed for explicit
   resubmission; full automatic job replay, cancel/retry UI, and SSE remain work.
 - Folder subtree trash preserves unknown files and can be restored as a whole;
@@ -156,9 +202,12 @@ an initial implementation, not certification of every acceptance gate:
 - Thumbnails are generated on demand. Full LRU eviction (basic capacity eviction is present), persisted failure status,
   fully prioritized warming and the complete format/performance matrix remain
   work. The UI uses React JavaScript rather than the proposed TypeScript baseline.
-- Dates are currently entered as ISO strings; explicit precision objects, richer
-  location editing, field-specific search filters, virtualized timelines, and full
+- Capture-date editing uses ISO strings; explicit precision objects, richer
+  location editing, virtualized timelines, and full
   keyboard/touch/accessibility coverage remain work.
+- Date-offset correction, targeted thumbnail repair, failed-thumbnail filtering,
+  and automatic expired selection/plan file cleanup remain work. Whole-library
+  maintenance and missing-date/people/album filters are available now.
 
 Back up originals, sidecars, folder intent, relocation mappings and trash manifests.
 The SQLite catalog and thumbnail cache are disposable. Do not remove source JSON

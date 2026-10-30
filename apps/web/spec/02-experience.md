@@ -29,8 +29,10 @@ search. Closing the viewer returns to that context.
 Search title, description, original filename aliases, people, albums, tags, and
 current relative path. Filters: capture-date range, person, album, media type,
 favorite, duplicate inclusion, and folder. Combine filters with AND; multiple
-values within a filter use OR. Search and label matching are Unicode-normalized
-and case-insensitive. Original spelling stays available for display.
+values within Albums/Tags use OR. People explicitly offers Any (OR) and All (AND).
+Facet selections match complete stored label values and preserve their spelling;
+free-text search is case-insensitive. See [ADR 0001](adr/0001-visual-querying-and-saved-views.md)
+for the implemented visual-query and saved-view model.
 
 Show loaded count and result count. A select control enters selection mode;
 Shift-click selects a loaded range. “Select all results” captures a server-side

@@ -1,0 +1,336 @@
+.query-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.query-layout > * {
+  min-width: 0;
+}
+.query-filters {
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  background: #fff;
+  border: 1px solid #e1e6ed;
+  border-radius: 12px;
+  font-size: 13px;
+  overflow: auto;
+}
+.query-filters > summary {
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+}
+.filter-update {
+  display: block;
+  font-size: 11px;
+  color: #687485;
+  font-weight: 400;
+  margin-top: 4px;
+}
+.filter-badge {
+  margin-left: 8px;
+  background: #e5effc;
+  color: #1a5db3;
+  font-size: 12px;
+  padding: 1px 7px;
+  border-radius: 12px;
+}
+.filter-sections {
+  border-top: 1px solid #edf0f4;
+}
+.filter-section {
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid #edf0f4;
+  margin: 0;
+}
+.filter-section > summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+.filter-section > summary small {
+  font-weight: 400;
+  margin-left: 4px;
+}
+.filter-section[open] > summary {
+  margin-bottom: 12px;
+}
+.facet-labels {
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  margin: 0;
+}
+.facet-labels input[type="search"] {
+  width: 100%;
+  font-size: 12px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+.facet-options {
+  max-height: 230px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.facet-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  cursor: pointer;
+}
+.facet-option > span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.facet-option > small {
+  font-variant-numeric: tabular-nums;
+}
+.facet-option input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #245da5;
+}
+.facet-control {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+  color: #526174;
+  font-size: 12px;
+}
+.query-filters select {
+  margin: 0;
+  width: 100%;
+  border: 1px solid #dce0e6;
+  border-radius: 6px;
+  background: #fff;
+  color: #233143;
+  font: inherit;
+  padding: 7px;
+}
+.facet-help,
+.facet-empty {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #687485;
+  margin: 5px 0 10px;
+}
+.favorite-section legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.facet-segments {
+  display: flex;
+  clear: both;
+  border: 1px solid #dce0e6;
+  border-radius: 7px;
+  overflow: hidden;
+}
+.facet-segments label {
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+.facet-segments label.selected {
+  background: #e5effc;
+  color: #1a5db3;
+  font-weight: 600;
+}
+.facet-segments input {
+  width: 12px;
+  height: 12px;
+  margin: 0 4px 0 0;
+  accent-color: #245da5;
+}
+.date-histogram {
+  height: 58px;
+  display: grid;
+  gap: 2px;
+  align-items: stretch;
+  margin: 10px 0 4px;
+}
+.date-histogram button {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 2px;
+  padding: 0;
+  background: transparent;
+  display: flex;
+  align-items: end;
+}
+.date-histogram button span {
+  display: block;
+  width: 100%;
+  background: #dce2eb;
+  border-radius: 2px 2px 0 0;
+}
+.date-histogram button .within-range {
+  background: #789ecc;
+}
+.date-histogram button:hover span,
+.date-histogram button[aria-pressed="true"] span {
+  background: #245da5;
+}
+.date-extents {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #687485;
+}
+.date-slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 26px;
+  user-select: none;
+  touch-action: none;
+}
+.date-slider-track {
+  position: relative;
+  background: #e1e6ed;
+  flex-grow: 1;
+  border-radius: 10px;
+  height: 4px;
+}
+.date-slider-range {
+  position: absolute;
+  background: #245da5;
+  border-radius: 10px;
+  height: 100%;
+}
+.date-slider-thumb {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 2px solid #245da5;
+  border-radius: 50%;
+  cursor: grab;
+}
+.date-selection {
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+.date-selection small {
+  font-size: 10px;
+  margin-left: 4px;
+}
+.date-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.date-fields label {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #526174;
+}
+.date-fields input {
+  padding: 7px;
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+}
+.date-fields button {
+  padding: 6px 8px;
+  font-size: 11px;
+}
+.date-error {
+  color: #872929;
+  font-size: 11px;
+  margin: 0;
+}
+.clear-filters {
+  margin: 12px 16px;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  margin: 0 0 18px;
+}
+.filter-chips button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #cfddf0;
+  background: #eaf1fb;
+  color: #24558e;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 20px;
+}
+.filter-chips button span {
+  font-size: 17px;
+  line-height: 1;
+}
+.filter-chips .clear-chips {
+  border: 0;
+  background: transparent;
+  text-decoration: underline;
+}
+.people-match-summary {
+  font-size: 12px;
+  color: #687485;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 999px) {
+  .query-filters {
+    position: static;
+    max-height: none;
+  }
+  .query-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .query-filters > summary {
+    list-style: revert;
+    padding: 12px 16px;
+  }
+  .filter-update {
+    display: inline;
+    margin-left: 12px;
+  }
+  .filter-sections {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .filter-section {
+    border-right: 1px solid #edf0f4;
+  }
+}
+@media (max-width: 480px) {
+  .filter-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

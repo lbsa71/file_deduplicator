@@ -2,6 +2,9 @@ import React, { useState as S, useEffect as E } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import { parseRoute, routeURL, followLink } from "./routes.js";
+import { queryScope, queryParams } from "./query.js";
+import { Filters, FilterChips } from "./filters.jsx";
+import { SavedViews, BatchDialog } from "./workspace.jsx";
 function App() {
   const [user, setUser] = S(null),
     [error, X] = S(""),
@@ -12,11 +15,23 @@ function App() {
     [view, setView] = S(null),
     [busy, W] = S(""),
     [jobs, J] = S([]),
-    [selected, C] = S(new Set()),
+    [selected, C] = S(new Map()),
+    [selection, setSelection] = S(null),
+    [batchOpen, setBatchOpen] = S(null),
+    [facets, setFacets] = S({}),
+    [loading, setLoading] = S(false),
+    [scanMode, setScanMode] = S("reconcile"),
     [editing, K] = S(null),
     [trashFolders, H] = S([]);
   const authRef = React.useRef(null);
   function U(value) {
+    if (value?.username !== authRef.current?.username) {
+      clearSelection();
+      setBatchOpen(null);
+      I([]);
+      T(0);
+      setFacets({});
+    }
     authRef.current = value;
     setUser(value);
   }
@@ -25,16 +40,31 @@ function App() {
     loadSequence = React.useRef(0),
     refresh = React.useRef(null),
     pendingScroll = React.useRef(null);
-  const { tab, query, folder, offset } = route;
+  const { tab, query, folder, offset, filters = {} } = route;
+  const filterKey = JSON.stringify(filters);
+  const scopeKey = JSON.stringify(route.scope || {});
+  const selectionCount = selection?.count ?? selected.size;
+  function clearSelection() {
+    C(new Map());
+    setSelection(null);
+  }
+  function filterChange(value) {
+    updateRoute(
+      { filters: value, offset: 0, photoId: null },
+      { scroll: window.scrollY },
+    );
+  }
   function collectionKey(value) {
     return routeURL({ ...value, photoId: null, login: false, next: null });
   }
   function prepareCollection(current, next, scroll) {
+    if (
+      collectionKey({ ...current, offset: 0 }) !==
+      collectionKey({ ...next, offset: 0 })
+    )
+      clearSelection();
     if (collectionKey(current) !== collectionKey(next)) {
       loadSequence.current++;
-      I([]);
-      G([]);
-      T(0);
       pendingScroll.current = scroll;
     }
   }
@@ -174,28 +204,28 @@ function App() {
   async function load() {
     if (!user) return;
     const sequence = ++loadSequence.current;
+    setLoading(true);
     try {
-      let p = new URLSearchParams({
-        q: query,
-        offset: String(offset),
-        limit: "100",
-        trash: String(tab === "Trash"),
-        favorite: String(tab === "Favorites"),
-        duplicates: String(tab === "Duplicates" || tab === "Folders"),
-      });
-      if (tab === "Folders" && folder !== ".") p.set("folder", folder);
-      const [d, directories, trash, jobs, library] = await Promise.all([
-        api("/photos?" + p),
-        tab === "Folders"
-          ? api("/folders?path=" + encodeURIComponent(folder))
-          : null,
-        tab === "Trash" ? api("/trash/folders") : null,
-        tab === "Activity" ? api("/jobs") : null,
-        api("/library"),
-      ]);
+      let p = queryParams(routeRef.current);
+      p.set("offset", String(offset));
+      p.set("limit", "100");
+      const [d, directories, trash, jobs, library, facetData] =
+        await Promise.all([
+          api("/photos?" + p),
+          tab === "Folders"
+            ? api("/folders?path=" + encodeURIComponent(folder))
+            : null,
+          tab === "Trash" ? api("/trash/folders") : null,
+          tab === "Activity" ? api("/jobs") : null,
+          api("/library"),
+          tab !== "Activity"
+            ? api("/facets?" + queryParams(routeRef.current))
+            : null,
+        ]);
       if (sequence !== loadSequence.current) return;
       I(d.items);
       T(d.total);
+      if (facetData) setFacets(facetData);
       if (directories) G(directories.items);
       if (trash) H(trash.items);
       if (jobs) J(jobs.items);
@@ -211,7 +241,15 @@ function App() {
           }
         });
     } catch (e) {
-      if (sequence === loadSequence.current) X(e.message);
+      if (sequence === loadSequence.current) {
+        I([]);
+        T(0);
+        G([]);
+        setFacets({});
+        X(e.message);
+      }
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }
   refresh.current = load;
@@ -234,7 +272,7 @@ function App() {
   }, []);
   E(() => {
     if (user) load();
-  }, [user, tab, query, folder, offset]);
+  }, [user, tab, query, folder, offset, filterKey, scopeKey]);
   async function act(fn) {
     try {
       X("");
@@ -338,7 +376,13 @@ function App() {
   async function bulk(action) {
     if (action === "download") {
       await act(async () => {
-        let r = await api("/exports", "POST", { ids: [...selected] });
+        let r = await api(
+          "/exports",
+          "POST",
+          selection
+            ? { selection_id: selection.id }
+            : { ids: [...selected.keys()] },
+        );
         for (let n = 0; n < 600; n++) {
           let j = await api("/jobs/" + r.job_id);
           if (j.state === "failed") throw Error(j.error);
@@ -349,12 +393,7 @@ function App() {
           await new Promise((r) => setTimeout(r, 500));
         }
       });
-    } else
-      for (let id of selected) {
-        let d = await api("/photos/" + id);
-        await act(() => api("/photos/" + id, "DELETE", undefined, d.revision));
-      }
-    C(new Set());
+    }
   }
   if (!user)
     return (
@@ -408,6 +447,8 @@ function App() {
               ...route,
               tab: t,
               query: "",
+              filters: {},
+              scope: {},
               folder: ".",
               offset: 0,
               photoId: null,
@@ -417,7 +458,7 @@ function App() {
             onClick={(event) =>
               followLink(event, (url) => {
                 navigate(url);
-                C(new Set());
+                clearSelection();
               })
             }
             key={t}
@@ -469,19 +510,38 @@ function App() {
             </label>
           )}
           {user.role >= 3 && (
-            <button
-              onClick={() =>
-                act(() => api("/scans", "POST", { mode: "reconcile" }))
-              }
-            >
-              Rescan
-            </button>
+            <div className="maintenance-controls">
+              <select
+                aria-label="Whole-library maintenance"
+                value={scanMode}
+                onChange={(e) => setScanMode(e.target.value)}
+              >
+                <option value="reconcile">Scan library</option>
+                <option value="metadata">Re-extract all metadata</option>
+                <option value="verify">Verify all originals</option>
+                <option value="catalog">Rebuild catalog</option>
+                <option value="thumbnails">Warm all thumbnails</option>
+              </select>
+              <button
+                onClick={() =>
+                  act(() => api("/scans", "POST", { mode: scanMode }))
+                }
+                disabled={!!busy}
+                title="Applies to the entire library, independently of filters and selection"
+              >
+                Rescan
+              </button>
+            </div>
           )}
         </header>
         <section className="heading">
           <div>
             <h2>{tab}</h2>
-            <small>{total.toLocaleString()} photographs and videos</small>
+            <small role="status">
+              {loading
+                ? "Updating results…"
+                : `${total.toLocaleString()} matching photographs and videos`}
+            </small>
           </div>
           <span>{busy}</span>
         </section>
@@ -490,20 +550,90 @@ function App() {
             {error} ×
           </div>
         )}
-        {selected.size > 0 && (
+        {tab !== "Activity" && (
+          <div className="selection-options">
+            <button
+              disabled={loading || !!selection || !items.length}
+              onClick={() =>
+                C(
+                  (s) =>
+                    new Map([...s, ...items.map((d) => [d.id, d.revision])]),
+                )
+              }
+            >
+              Select page
+            </button>
+            <button
+              disabled={loading || !total || !!busy}
+              onClick={() =>
+                act(async () => {
+                  const expected = collectionKey({
+                      ...routeRef.current,
+                      offset: 0,
+                    }),
+                    owner = authRef.current;
+                  const s = await api("/selections", "POST", {
+                    query: queryScope(routeRef.current),
+                  });
+                  if (
+                    owner === authRef.current &&
+                    expected ===
+                      collectionKey({ ...routeRef.current, offset: 0 })
+                  ) {
+                    setSelection(s);
+                    C(new Map());
+                  }
+                })
+              }
+            >
+              Select all {total.toLocaleString()} matching
+            </button>
+            {selectionCount > 0 && (
+              <button onClick={clearSelection}>Clear selection</button>
+            )}
+          </div>
+        )}
+        {selectionCount > 0 && (
           <div className="selection">
-            {selected.size} selected{" "}
-            <button onClick={() => bulk("download")}>Download</button>
+            <strong>{selectionCount.toLocaleString()} selected</strong>
+            {selection && (
+              <small>Fixed selection · expires in 30 minutes</small>
+            )}
+            <button
+              disabled={selectionCount > 1000 || tab === "Trash" || !!busy}
+              title={
+                selectionCount > 1000
+                  ? "Exports support up to 1,000 photos and 20 GiB per ZIP"
+                  : ""
+              }
+              onClick={() => bulk("download")}
+            >
+              Download ZIP
+            </button>
+            {selectionCount > 1000 && (
+              <small>ZIP export: up to 1,000 photos per download</small>
+            )}
             {user.role >= 2 && (
               <button
+                disabled={!!busy || loading}
                 onClick={() =>
-                  confirm("Trash selected occurrences?") && bulk("trash")
+                  setBatchOpen({
+                    selection: selection
+                      ? { selection_id: selection.id }
+                      : {
+                          targets: [...selected].map(([id, revision]) => ({
+                            id,
+                            revision,
+                          })),
+                        },
+                    count: selectionCount,
+                    trashed: tab === "Trash",
+                  })
                 }
               >
-                Trash
+                Batch actions
               </button>
             )}
-            <button onClick={() => C(new Set())}>Clear</button>
           </div>
         )}
         {tab === "Folders" && (
@@ -625,67 +755,145 @@ function App() {
               <article key={j.id}>
                 <b>{j.action}</b> — {j.state}
                 <p>{j.error}</p>
+                {j.result && (
+                  <details>
+                    <summary>Result</summary>
+                    <pre>{JSON.stringify(j.result, null, 2)}</pre>
+                  </details>
+                )}
                 <small>{new Date(j.created * 1000).toLocaleString()}</small>
               </article>
             ))}
             <button onClick={load}>Refresh</button>
           </section>
         ) : (
-          <>
-            <section className="grid">
-              {items.map((d) => (
-                <article className="tile" key={d.id} data-record-id={d.id}>
-                  <input
-                    aria-label="Select photo"
-                    type="checkbox"
-                    checked={selected.has(d.id)}
-                    onChange={(e) =>
-                      C((s) => {
-                        let n = new Set(s);
-                        e.target.checked ? n.add(d.id) : n.delete(d.id);
-                        return n;
-                      })
-                    }
-                  />
-                  <a
-                    className="photo-link"
-                    href={routeURL({ ...route, photoId: d.id })}
-                    onClick={(event) => followLink(event, () => open(d.id))}
-                  >
-                    {tab === "Trash" ? (
-                      <div className="placeholder">In trash</div>
-                    ) : (
-                      <Thumb id={d.id} />
-                    )}
-                    <div className="caption">
-                      {d.metadata.title ||
-                        d.metadata.people?.join(", ") ||
-                        d.metadata.capture_time?.slice(0, 10) ||
-                        "Undated"}
-                      {d.metadata.favorite ? " ♥" : ""}
-                    </div>
-                  </a>
-                </article>
-              ))}
-            </section>
-            <nav className="pages">
-              <button
-                disabled={!offset}
-                onClick={() => O(Math.max(0, offset - 100))}
-              >
-                Previous
-              </button>
-              <span>{Math.floor(offset / 100) + 1}</span>
-              <button
-                disabled={offset + 100 >= total}
-                onClick={() => O(offset + 100)}
-              >
-                Next
-              </button>
-            </nav>
-          </>
+          <div className="query-layout">
+            <div className="query-sidebar">
+              <SavedViews
+                api={api}
+                scope={queryScope(route)}
+                navigate={navigate}
+                username={user.username}
+              />
+              <Filters
+                filters={filters}
+                onChange={filterChange}
+                facets={facets}
+                busy={loading}
+              />
+            </div>
+            <div className="query-results" aria-busy={loading}>
+              <FilterChips filters={filters} onChange={filterChange} />
+              {Object.keys(route.scope || {}).length > 0 && (
+                <div
+                  className="filter-chips"
+                  aria-label="Additional collection constraints"
+                >
+                  {Object.entries(route.scope).map(([key, value]) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        const scope = { ...route.scope };
+                        delete scope[key];
+                        updateRoute({ scope, offset: 0, photoId: null });
+                      }}
+                    >
+                      {key === "folder"
+                        ? `Folder: ${value}`
+                        : key === "favorite"
+                          ? value
+                            ? "Favourites only"
+                            : "All favourite states"
+                          : key === "duplicates"
+                            ? value
+                              ? "Include retained copies"
+                              : "Canonical photos"
+                            : value
+                              ? "Trashed photos"
+                              : "Active photos"}{" "}
+                      ×
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!loading && !items.length && (
+                <p className="empty-results">
+                  No photos match this view. Adjust a filter or clear the
+                  search.
+                </p>
+              )}
+              <section className="grid">
+                {items.map((d) => (
+                  <article className="tile" key={d.id} data-record-id={d.id}>
+                    <input
+                      aria-label="Select photo"
+                      type="checkbox"
+                      checked={!!selection || selected.has(d.id)}
+                      disabled={loading || !!selection}
+                      onChange={(e) =>
+                        C((s) => {
+                          let n = new Map(s);
+                          e.target.checked
+                            ? n.set(d.id, d.revision)
+                            : n.delete(d.id);
+                          return n;
+                        })
+                      }
+                    />
+                    <a
+                      className="photo-link"
+                      href={routeURL({ ...route, photoId: d.id })}
+                      onClick={(event) => followLink(event, () => open(d.id))}
+                    >
+                      {tab === "Trash" ? (
+                        <div className="placeholder">In trash</div>
+                      ) : (
+                        <Thumb id={d.id} />
+                      )}
+                      <div className="caption">
+                        {d.metadata.title ||
+                          d.metadata.people?.join(", ") ||
+                          d.metadata.capture_time?.slice(0, 10) ||
+                          "Undated"}
+                        {d.metadata.favorite ? " ♥" : ""}
+                      </div>
+                    </a>
+                  </article>
+                ))}
+              </section>
+              <nav className="pages">
+                <button
+                  disabled={!offset}
+                  onClick={() => O(Math.max(0, offset - 100))}
+                >
+                  Previous
+                </button>
+                <span>{Math.floor(offset / 100) + 1}</span>
+                <button
+                  disabled={offset + 100 >= total}
+                  onClick={() => O(offset + 100)}
+                >
+                  Next
+                </button>
+              </nav>
+            </div>
+          </div>
         )}
       </main>
+      {batchOpen && (
+        <BatchDialog
+          api={api}
+          selection={batchOpen.selection}
+          count={batchOpen.count}
+          folders={registered}
+          trashed={batchOpen.trashed}
+          onClose={() => setBatchOpen(null)}
+          onDone={() => {
+            clearSelection();
+            refresh.current();
+          }}
+        />
+      )}
       {view && (
         <div className="viewer" role="dialog" aria-modal="true">
           <button className="close" onClick={() => V(null)}>

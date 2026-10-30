@@ -23,6 +23,13 @@ Requirement IDs in these documents are stable. MUST is required for the first
 release; SHOULD permits a documented implementation tradeoff. Performance
 numbers are acceptance targets to measure, not results already achieved.
 
+## Architecture decisions
+
+- [ADR 0001: Visual queries, saved views, and explicit batch targets](adr/0001-visual-querying-and-saved-views.md)
+  specifies the filter sidebar, persistent personal views, query URLs, and reviewed
+  batch operations. Its People Any/All and exact label-selection rules refine the
+  original collection-search proposal.
+
 ## Decisions made for this specification
 
 | Area | First-release decision |

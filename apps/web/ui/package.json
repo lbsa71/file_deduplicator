@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "test": "node --test src/routes.test.js"
+    "test": "node --test src/*.test.js"
   },
   "dependencies": {
+    "@radix-ui/react-slider": "^1.6.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

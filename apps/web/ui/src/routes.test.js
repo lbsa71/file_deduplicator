@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseRoute, routeURL, safeReturnURL } from "./routes.js";
+import { queryParams } from "./query.js";
 const id = "99b8980a-6721-4641-b41c-3d81e81c3b5d";
 test("photo deep link retains folder search context", () => {
   const route = parseRoute(
@@ -58,4 +59,38 @@ test("trailing slash variants retain the requested view", () => {
   assert.equal(parseRoute("/folders/photos/2000/09/").folder, "photos/2000/09");
   assert.equal(parseRoute("/photos/" + id + "/").photoId, id);
   assert.equal(parseRoute("/login/?next=%2Ffavorites").login, true);
+});
+test("filters survive photo deep links, login return and navigation context", () => {
+  const route = parseRoute(
+    `/photos/${id}?person=Viktor&person=Ellen&people_mode=all&from=2009-01-01&favorite=yes&album=Jul+%26+ny%C3%A5r`,
+  );
+  assert.deepEqual(route.filters, {
+    people: ["Ellen", "Viktor"],
+    people_mode: "all",
+    albums: ["Jul & nyår"],
+    from: "2009-01-01",
+    favorite: "yes",
+  });
+  const url = routeURL(route);
+  assert.deepEqual(parseRoute(url), route);
+  assert.equal(parseRoute(routeURL({ login: true, next: url })).next, url);
+  assert.deepEqual(
+    parseRoute(routeURL({ ...route, photoId: null, offset: 100 })).filters,
+    route.filters,
+  );
+});
+
+test("scope flags accept explicit booleans and reject malformed values", () => {
+  assert.equal(
+    queryParams(parseRoute("/photos?scope_duplicates=true")).get("duplicates"),
+    "true",
+  );
+  assert.equal(
+    queryParams(parseRoute("/favorites?scope_favorite=false")).get("favorite"),
+    "false",
+  );
+  assert.throws(
+    () => queryParams(parseRoute("/photos?scope_duplicates=maybe")),
+    /scope_duplicates/,
+  );
 });

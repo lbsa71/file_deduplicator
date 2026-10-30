@@ -1,5 +1,36 @@
 # HTTP API contract
 
+## Visual-query implementation (ADR 0001)
+
+`GET /api/v1/photos` accepts `filters`, a JSON object alongside the existing
+`q`, `folder`, `duplicates`, `favorite`, and `trash` scope. Supported keys are
+`people`, `people_mode` (any/all), `albums`, `tags`, `from`, `to`, `date`
+(any/known/unknown), `favorite` (any/yes/no), `type` (any/image/video), and
+`missing` (any/people/albums). Dates are inclusive YYYY-MM-DD values.
+`GET /api/v1/facets` accepts the same scope and returns `people`, `albums`, `tags`,
+and `years` as `{value,count}` arrays, plus `date_unknown` and `total`.
+
+`GET/POST /api/v1/views` lists/creates the authenticated user's saved queries.
+Create body: `{name,query}`. `PATCH/DELETE /api/v1/views/{id}` require `If-Match`.
+PATCH preserves omitted fields. View JSON includes `id`, `name`, `query`, and
+`revision`. Each query stores the same scope as photo listing, without pagination.
+
+`POST /api/v1/selections` accepts either `{query}` or `{targets:[{id,revision}]}`
+and returns `{id,count,created,expires}`. It freezes all matching IDs and revisions
+for 30 minutes. `POST /api/v1/batch-plans` accepts `operation` plus one of
+`selection_id`, `targets`, or `query`. It returns `id`, `revision`, `count`,
+`state:ready`, and five preview examples. Operations: metadata with distinct
+`set/reset/add/remove`, move with `folder_id`, trash, or restore.
+`POST /api/v1/batch-plans/{id}/execute` requires `If-Match` and returns the existing
+202 job contract. Results contain totals and per-photo outcomes. Plans are private,
+expire, are claimed once, and do not reevaluate queries during execution.
+
+`POST /api/v1/exports` also accepts `selection_id` instead of explicit `ids`;
+the existing 1,000-photo/20-GiB limits still apply. Saved-view and selection writes
+require an authenticated reader and CSRF; batch plans/execution require an editor.
+
+## General conventions
+
 Base URL: `/api/v1`. Same origin as the UI. JSON uses UTF-8, UTC RFC3339 audit
 timestamps, UUID strings, and integer byte counts. Capture times have separate
 precision/timezone semantics. Unknown fields in write payloads are rejected.

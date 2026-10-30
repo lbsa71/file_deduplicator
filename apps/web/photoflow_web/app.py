@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from .frontend import FrontendFiles
 from .core import Library, Conflict, atomic, digest, load
 from .media import Media
+from .workspace import Workspace
 
 
 def create_app(root=None, state=None, auth=None, role_resolver=None, static_root=None):
@@ -16,6 +17,7 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
         state or os.environ.get("PHOTOFLOW_STATE", "/var/lib/photoflow-web"),
     )
     media = Media(library, library.state / "thumbnails")
+    workspace = Workspace(library)
     sessions = {}
     attempts = {}
     executor = concurrent.futures.ThreadPoolExecutor(1)
@@ -295,11 +297,118 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
         duplicates: bool = False,
         favorite: bool = False,
         trash: bool = False,
+        filters: str = "{}",
     ):
         session(req)
         if offset < 0 or not 1 <= limit <= 200:
             raise ValueError("Invalid page")
-        return library.listing(q, offset, limit, folder, duplicates, favorite, trash)
+        return library.listing(
+            q,
+            offset,
+            limit,
+            folder,
+            duplicates,
+            favorite,
+            trash,
+            filters=json.loads(filters),
+        )
+
+    @app.get("/api/v1/facets")
+    def facets(
+        req: Request,
+        q: str = "",
+        folder: str | None = None,
+        duplicates: bool = False,
+        favorite: bool = False,
+        trash: bool = False,
+        filters: str = "{}",
+    ):
+        session(req)
+        return library.facets(
+            q=q,
+            folder=folder,
+            duplicates=duplicates,
+            favorite=favorite,
+            trash=trash,
+            filters=json.loads(filters),
+        )
+
+    @app.get("/api/v1/views")
+    def views(req: Request):
+        return workspace.list_views(session(req)["username"])
+
+    @app.post("/api/v1/views")
+    def create_view(req: Request, body: dict):
+        user = session(req, 1, True)
+        return workspace.create_view(
+            user["username"], body.get("name"), body.get("query", {})
+        )
+
+    @app.patch("/api/v1/views/{ident}")
+    def update_view(ident: str, req: Request, body: dict):
+        user = session(req, 1, True)
+        current = next(
+            (
+                v
+                for v in workspace.list_views(user["username"])["items"]
+                if v["id"] == ident
+            ),
+            None,
+        )
+        if current is None:
+            raise KeyError(ident)
+        return workspace.update_view(
+            user["username"],
+            ident,
+            revision(req),
+            body.get("name", current["name"]),
+            body.get("query", current["query"]),
+        )
+
+    @app.delete("/api/v1/views/{ident}")
+    def delete_view(ident: str, req: Request):
+        user = session(req, 1, True)
+        workspace.delete_view(user["username"], ident, revision(req))
+        return {"deleted": True}
+
+    @app.post("/api/v1/selections")
+    def create_selection(req: Request, body: dict):
+        user = session(req, 1, True)
+        return workspace.create_selection(
+            user["username"], query=body.get("query"), targets=body.get("targets")
+        )
+
+    @app.post("/api/v1/batch-plans")
+    def create_plan(req: Request, body: dict):
+        user = session(req, 2, True)
+        return workspace.create_plan(
+            user["username"],
+            body.get("operation"),
+            selection_id=body.get("selection_id"),
+            targets=body.get("targets"),
+            query=body.get("query"),
+        )
+
+    @app.post("/api/v1/batch-plans/{ident}/execute")
+    def execute_plan(ident: str, req: Request):
+        user = session(req, 2, True)
+        rev = revision(req)
+        plan = workspace.get_plan(user["username"], ident)
+        if plan["revision"] != rev or plan["state"] != "ready":
+            raise Conflict("Batch plan already used or changed; preview again")
+
+        def authorized():
+            if role(user["username"]) < 2:
+                raise ValueError("Edit permission revoked")
+            return True
+
+        return job(
+            user["username"],
+            "batch",
+            lambda: workspace.execute_plan(
+                user["username"], ident, rev, authorize=authorized
+            ),
+        )
 
     @app.get("/api/v1/photos/{ident}")
     def photo(ident: str, req: Request):
@@ -528,7 +637,16 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
     @app.post("/api/v1/exports")
     def export(req: Request, body: dict):
         d = session(req, 1, True)
-        ids = body.get("ids", [])
+        ids = (
+            [
+                x["id"]
+                for x in workspace.selection_targets(
+                    d["username"], body["selection_id"]
+                )
+            ]
+            if body.get("selection_id")
+            else body.get("ids", [])
+        )
         if not ids or len(ids) > 1000:
             raise ValueError("Select 1–1000 records")
         export_id = uuid.uuid4().hex
