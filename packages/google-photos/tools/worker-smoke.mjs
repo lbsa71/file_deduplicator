@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { item, album, envelope, ACCOUNT } from "../test/fixtures.js";
+import { ACCOUNT } from "../test/fixtures.js";
+import { toolkitBrowserFixture } from "../test/toolkit-browser-fixture.js";
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const temp = await mkdtemp(join(tmpdir(), "google-worker-browser-"));
 const endpoint = "https://127.0.0.1:8099";
@@ -15,7 +16,11 @@ const server = spawn(
   ["apps/web/tests/google_worker_fixture.py"],
   {
     cwd: root,
-    env: { ...process.env, PYTHONPATH: "apps/web:apps/photoflow" },
+    env: {
+      ...process.env,
+      PYTHONPATH: "apps/web:apps/photoflow",
+      PHOTOFLOW_GOOGLE_TEST_ACCOUNT: ACCOUNT,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   },
 );
@@ -51,34 +56,10 @@ try {
       `--load-extension=${extension}`,
     ],
   });
-  let calls = 0;
-  await context.route("https://photos.google.com/**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.endsWith("/batchexecute")) {
-      calls++;
-      const rpc = url.searchParams.get("rpcids");
-      let payload;
-      const args = JSON.parse(
-        JSON.parse(
-          new URLSearchParams(route.request().postData()).get("f.req"),
-        )[0][0][1],
-      );
-      if (rpc === "lcxiM")
-        payload = args[0] ? [[item("media-b")], null] : [[item()], "next"];
-      else if (rpc === "EzkLib") payload = [[item("media-a", true)], null];
-      else if (rpc === "Z5xsfc") payload = [[album()], null];
-      else throw Error("Unexpected RPC");
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: envelope(rpc, payload),
-      });
-    }
-    return route.fulfill({
-      contentType: "text/html",
-      body: `<h1>Synthetic Google Photos</h1><script>window.WIZ_global_data=${JSON.stringify({ oPEP7c: ACCOUNT, FdrFJe: "PRIVATE_SESSION", cfb2h: "build", eptZe: "/_/PhotosUi/", SNlM0e: "PRIVATE_CSRF" })}</script>`,
-    });
-  });
+  const fixture = toolkitBrowserFixture();
+  await context.route("https://photos.google.com/**", (route) =>
+    fixture.route(route),
+  );
   let healthy = false;
   for (let n = 0; n < 100; n++) {
     try {
@@ -124,7 +105,7 @@ try {
     .getByRole("button", { name: "✓ Google connected", exact: true })
     .waitFor({ timeout: 30000 });
   assert.ok(await ui.getByText(/2 items, 1 favorites, 1 albums/).count());
-  assert.equal(calls, 4);
+  assert.equal(fixture.calls, 4);
   const [download] = await Promise.all([
     panel.waitForEvent("download"),
     panel.locator("#worker-diagnostics").click(),
@@ -144,19 +125,135 @@ try {
         e.textContent.includes("succeeded"),
       ),
   );
-  assert.equal(calls, 8);
+  assert.equal(fixture.calls, 8);
+  await ui
+    .getByText("Operation workbench and qualification suite", { exact: true })
+    .click();
+  await ui
+    .getByLabel("Selected library photo URL", { exact: true })
+    .fill("https://photos.google.com/photo/media-a");
+  await ui.getByLabel("Selected album ID", { exact: true }).fill("album-a");
+  await ui
+    .getByLabel("Optional opaque Google hashes", { exact: true })
+    .fill("opaque");
+  await ui
+    .getByText(
+      "I am testing synthetic media in the configured isolated account.",
+      { exact: true },
+    )
+    .click();
+  await ui.getByLabel(/Pilot metadata/).fill(
+    JSON.stringify({
+      timestampSec: 1700001000,
+      timezoneSec: 3600,
+      location: {
+        centerE7: [10000000, 20000000],
+        visible1E7: [9000000, 19000000],
+        visible2E7: [11000000, 21000000],
+        scale: 14,
+        placeId: "fixture-place",
+      },
+    }),
+  );
+  await ui
+    .getByRole("button", {
+      name: "Prepare read and write pilot suite",
+      exact: true,
+    })
+    .click();
+  await ui
+    .getByRole("button", { name: "Queue prepared suite", exact: true })
+    .click();
+  await ui.waitForFunction(
+    () =>
+      document.querySelectorAll(".google-panel ol>li").length === 26 &&
+      [...document.querySelectorAll(".google-panel ol>li")].every((e) =>
+        /: (succeeded|failed|unknown|blocked)/.test(e.textContent),
+      ),
+    {},
+    { timeout: 60000 },
+  );
+  assert.equal(
+    await ui
+      .locator(".google-panel ol>li")
+      .filter({ hasText: /: (failed|unknown|blocked)/ })
+      .count(),
+    0,
+  );
+  assert.equal(fixture.state.trashed, false);
+  assert.equal(fixture.state.favorite, false);
+  assert.equal(fixture.state.archived, false);
+  assert.equal(fixture.state.member, false);
+  assert.equal(fixture.state.location, null);
+  assert.ok(fixture.state.writes.includes("ycV3Nd"));
+  assert.ok(fixture.state.writes.includes("EtUHOe"));
+  fixture.state.failNextWrite = true;
+  await ui
+    .getByLabel("Individual operation", { exact: true })
+    .selectOption("favorite-set");
+  await ui
+    .getByRole("button", { name: "Queue selected operation", exact: true })
+    .click();
+  await ui.waitForFunction(() =>
+    [...document.querySelectorAll(".google-panel ol>li")].some((e) =>
+      e.textContent.includes("unknown"),
+    ),
+  );
+  const row = await ui
+    .locator(".google-panel ol>li")
+    .filter({ hasText: "unknown" })
+    .first()
+    .getByRole("button", { name: "Download job diagnostics" });
+  const [failedDownload] = await Promise.all([
+    ui.waitForEvent("download"),
+    row.click(),
+  ]);
+  const failed = JSON.parse(
+    await readFile(await failedDownload.path(), "utf8"),
+  );
+  const writesBefore = fixture.state.writes.length;
+  await ui
+    .getByLabel("Individual operation", { exact: true })
+    .selectOption("reconcile-write");
+  await ui
+    .getByLabel("Job input JSON", { exact: true })
+    .fill(JSON.stringify({ originalJobId: failed.job.id }));
+  await ui
+    .getByRole("button", { name: "Queue selected operation", exact: true })
+    .click();
+  await ui.waitForFunction(
+    () =>
+      document.querySelectorAll(".google-panel ol>li").length === 28 &&
+      [...document.querySelectorAll(".google-panel ol>li")].every((e) =>
+        e.textContent.includes("succeeded"),
+      ),
+    {},
+    { timeout: 30000 },
+  );
+  assert.equal(fixture.state.writes.length, writesBefore);
   console.log(
     JSON.stringify({
       pairing: true,
       wss: true,
-      jobsCompleted: 2,
-      googleRequests: calls,
+      jobsCompleted: 28,
+      fixtureOperationTypes: 22,
+      lostWriteReconciledWithoutReplay: true,
+      googleRequests: fixture.calls,
       phases: true,
       sanitizedDiagnostics: true,
       realGoogleTraffic: false,
     }),
   );
 } catch (error) {
+  if (panel)
+    console.error(
+      JSON.stringify(
+        await panel.evaluate(async () => ({
+          diagnostics: (await chrome.storage.session.get("workerDiagnostics"))
+            .workerDiagnostics,
+        })),
+      ),
+    );
   console.error(
     JSON.stringify({
       fixtureErrors: errors,

@@ -181,3 +181,103 @@ test("a response stream failure is distinct from a fetch or parser failure", asy
     Object.assign(globalThis, saved);
   }
 });
+
+test("pilot browser writes require an unexpired isolated-account scope bound to operation and target", async () => {
+  const saved = {
+    location: globalThis.location,
+    WIZ_global_data: globalThis.WIZ_global_data,
+    fetch: globalThis.fetch,
+  };
+  let calls = 0;
+  try {
+    globalThis.location = new URL("https://photos.google.com/");
+    globalThis.WIZ_global_data = { ...session };
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response(envelope("Ftfh0", [true]), { status: 200 });
+    };
+    const scope = {
+      testOnly: true,
+      account: ACCOUNT,
+      jobId: "pilot-a",
+      operation: "favorite-set",
+      expiresAt: Date.now() + 60000,
+      photoKey: "media-a",
+      albumId: null,
+    };
+    const request = {
+      account: ACCOUNT,
+      operation: "favorite-set",
+      mode: "write",
+      rpc: "Ftfh0",
+      data: [[[null, "dedup-a"]], [1]],
+      testScope: scope,
+      targetMediaKey: "media-a",
+      targetAlbumId: null,
+    };
+    for (const patch of [
+      { testScope: null },
+      { testScope: { ...scope, account: "other" } },
+      { testScope: { ...scope, expiresAt: 1 } },
+      { targetMediaKey: "other" },
+      { targetAlbumId: "other" },
+      { rpc: "XwAOJf" },
+    ])
+      assert.equal(
+        (await pageRequest({ ...request, ...patch })).error,
+        "UNQUALIFIED",
+      );
+    assert.equal(calls, 0);
+    assert.equal((await pageRequest(request)).status, 200);
+    assert.equal(calls, 1);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
+
+test("serialized page requests preserve explicit null target bindings across Chrome injection", async () => {
+  const saved = {
+    location: globalThis.location,
+    WIZ_global_data: globalThis.WIZ_global_data,
+    fetch: globalThis.fetch,
+  };
+  try {
+    globalThis.location = new URL("https://photos.google.com/");
+    globalThis.WIZ_global_data = { ...session };
+    let calls = 0;
+    globalThis.fetch = async (_url, options) => {
+      calls++;
+      assert.deepEqual(
+        JSON.parse(
+          JSON.parse(new URLSearchParams(options.body).get("f.req"))[0][0][1],
+        ),
+        ["PhotoFlow test fixture", null, 2],
+      );
+      return new Response(envelope("OXvT9d", [["album-created"]]));
+    };
+    const value = {
+      account: ACCOUNT,
+      rpc: "OXvT9d",
+      operation: "album-create",
+      mode: "write",
+      data: ["PhotoFlow test fixture", null, 2],
+      targetMediaKey: null,
+      targetAlbumId: null,
+      testScope: {
+        testOnly: true,
+        account: ACCOUNT,
+        operation: "album-create",
+        jobId: "job",
+        expiresAt: Date.now() + 60000,
+        photoKey: null,
+        albumId: null,
+      },
+    };
+    assert.equal((await pageRequest(JSON.stringify(value))).status, 200);
+    assert.equal(calls, 1);
+    assert.equal((await pageRequest("{broken")).error, "INPUT");
+    assert.equal(calls, 1);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});

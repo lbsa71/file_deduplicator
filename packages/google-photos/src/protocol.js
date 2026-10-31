@@ -180,7 +180,18 @@ export function readRequest(kind, args = {}) {
   if (cursor !== null) identifier(cursor, "cursor");
   switch (kind) {
     case "inventory":
-      return { rpc: "lcxiM", data: [cursor, null, 500, null, 1, 3] };
+      requireThat(
+        args.limit === undefined ||
+          (Number.isInteger(args.limit) &&
+            args.limit >= 1 &&
+            args.limit <= 500),
+        "Invalid page limit",
+        "INPUT",
+      );
+      return {
+        rpc: "lcxiM",
+        data: [cursor, null, args.limit ?? 500, null, 1, 3],
+      };
     case "favorites":
       return { rpc: "EzkLib", data: ["Favorites", [[5, "8", 0, 9]], cursor] };
     case "albums":
@@ -205,6 +216,10 @@ export function readRequest(kind, args = {}) {
         rpc: "fDcn4b",
         data: [identifier(args.mediaKey, "media key"), 1, null, null, 1],
       };
+    case "quota":
+      return { rpc: "EzwWhf", data: [] };
+    case "downloadLink":
+      return { rpc: "pLFTfd", data: [[identifier(args.mediaKey)], null, null] };
     case "hashCandidates": {
       requireThat(
         Array.isArray(args.hashes) &&

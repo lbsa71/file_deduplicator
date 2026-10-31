@@ -1,4 +1,4 @@
-"""Private credentials and durable read-only jobs for paired desktop workers."""
+"""Private credentials and durable typed jobs for paired desktop workers."""
 
 import asyncio
 import hashlib
@@ -30,43 +30,14 @@ def hashed(value):
     return hashlib.sha256(identifier(value).encode()).hexdigest()
 
 
-def validate_counts(result):
-    check(
-        isinstance(result, dict)
-        and set(result)
-        == {"photos", "favorites", "albums", "complete", "retentionReady"}
-    )
-    check(result["complete"] is True and result["retentionReady"] is False)
-    check(
-        all(
-            type(result[k]) is int and 0 <= result[k] <= 1000000
-            for k in ["photos", "favorites", "albums"]
-        )
-    )
-    check(result["favorites"] <= result["photos"])
+from .google_contracts import JOB_SPECS, photo_key, summary
 
-
-JOB_PROTOCOL_VERSION = 1
-JOB_SPECS = {
-    "inventory-counts": {
-        "version": 1,
-        "effect": "read",
-        "validate_result": validate_counts,
-        "phases": [
-            "checking",
-            "library",
-            "favorites",
-            "albums",
-            "verifying",
-            "complete",
-            "failed",
-        ],
-    }
-}
+JOB_PROTOCOL_VERSION = 2
 
 
 class WorkerStore:
-    def __init__(self, directory, now=time.time):
+    def __init__(self, directory, now=time.time, test_account=""):
+        self.test_account = test_account
         self.now = now
         directory = Path(directory) / "google-workers"
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -84,6 +55,9 @@ class WorkerStore:
                 ("events", "TEXT NOT NULL DEFAULT '[]'"),
                 ("attempt", "INTEGER NOT NULL DEFAULT 0"),
                 ("account", "TEXT"),
+                ("input", "TEXT NOT NULL DEFAULT '{}'"),
+                ("suite", "TEXT"),
+                ("version", "INTEGER NOT NULL DEFAULT 1"),
             ]:
                 if name not in {
                     row[1] for row in db.execute("PRAGMA table_info(jobs)")
@@ -92,7 +66,7 @@ class WorkerStore:
             db.execute(
                 "UPDATE jobs SET account=(SELECT account FROM workers WHERE workers.id=jobs.worker) WHERE account IS NULL"
             )
-            # Only read jobs exist. Re-enumeration is safe; old leases never survive restart.
+            # Reads can be re-enumerated; interrupted writes retain an unknown outcome.
             for row in db.execute(
                 "SELECT * FROM jobs WHERE state='running'"
             ).fetchall():
@@ -146,10 +120,7 @@ class WorkerStore:
             ).fetchall()
             check(all(w["owner"] == row["owner"] for w in old))
             for w in old:
-                db.execute(
-                    "UPDATE jobs SET state='failed',error='REPAIRED' WHERE worker=? AND state IN ('queued','running')",
-                    (w["id"],),
-                )
+                self.retire(db, w["id"], "REPAIRED")
             db.execute("DELETE FROM workers WHERE owner=?", (row["owner"],))
             db.execute(
                 "INSERT INTO workers VALUES(?,?,?,?,?,?,?)",
@@ -183,74 +154,168 @@ class WorkerStore:
                 (self.now(), int(ready), ident),
             )
 
-    def enqueue(self, owner, operation="inventory-counts"):
-        check(operation in JOB_SPECS)
-        with self.db() as db:
-            worker = db.execute(
-                "SELECT * FROM workers WHERE owner=? AND expires>?", (owner, self.now())
-            ).fetchone()
-            check(worker)
+    def _enqueue(self, db, owner, operation, value, confirmed, suite=None):
+        check(isinstance(operation, str) and operation in JOB_SPECS)
+        spec = JOB_SPECS[operation]
+        spec["validate_input"](value)
+        value = {
+            **{k: None for k, v in spec["fields"].items() if v.endswith("?")},
+            **value,
+        }
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"))
+        worker = db.execute(
+            "SELECT * FROM workers WHERE owner=? AND expires>?", (owner, self.now())
+        ).fetchone()
+        check(worker)
+        if spec["effect"] == "write":
+            check(
+                confirmed is True
+                and self.test_account
+                and worker["account"] == self.test_account
+            )
             check(
                 not db.execute(
-                    "SELECT 1 FROM jobs WHERE worker=? AND state='unknown'",
-                    (worker["id"],),
+                    "SELECT 1 FROM jobs WHERE account=? AND state='unknown'",
+                    (worker["account"],),
                 ).fetchone()
             )
-            row = db.execute(
-                "SELECT * FROM jobs WHERE worker=? AND state IN ('queued','running')",
-                (worker["id"],),
+        pending = db.execute(
+            "SELECT count(*) FROM jobs WHERE worker=? AND state IN ('queued','running')",
+            (worker["id"],),
+        ).fetchone()[0]
+        check(pending < 96)
+        row = (
+            None
+            if suite
+            else db.execute(
+                "SELECT * FROM jobs WHERE worker=? AND operation=? AND input=? AND state IN ('queued','running')",
+                (worker["id"], operation, encoded),
             ).fetchone()
-            if not row:
-                ident = secrets.token_hex(16)
-                db.execute(
-                    "INSERT INTO jobs(id,owner,worker,state,lease,started,created,result,error,operation,account) VALUES(?,?,?,'queued',NULL,NULL,?,NULL,NULL,?,?)",
-                    (
-                        ident,
-                        owner,
-                        worker["id"],
-                        self.now(),
-                        operation,
-                        worker["account"],
-                    ),
-                )
-                row = db.execute("SELECT * FROM jobs WHERE id=?", (ident,)).fetchone()
+        )
+        if not row:
+            ident = secrets.token_hex(16)
+            db.execute(
+                "INSERT INTO jobs(id,owner,worker,state,created,operation,account,input,suite,version) VALUES(?,?,?,'queued',?,?,?,?,?,?)",
+                (
+                    ident,
+                    owner,
+                    worker["id"],
+                    self.now(),
+                    operation,
+                    worker["account"],
+                    encoded,
+                    suite,
+                    spec["version"],
+                ),
+            )
+            row = db.execute("SELECT * FROM jobs WHERE id=?", (ident,)).fetchone()
         return self.public_job(row)
+
+    def enqueue(self, owner, operation="inventory-counts", value=None, confirmed=False):
+        with self.db() as db:
+            return self._enqueue(
+                db, owner, operation, {} if value is None else value, confirmed
+            )
+
+    def suite(self, owner, jobs, confirmed=False):
+        check(isinstance(jobs, list) and 1 <= len(jobs) <= 32)
+        ident = secrets.token_hex(16)
+        with self.db() as db:
+            result = []
+            for job in jobs:
+                check(isinstance(job, dict) and set(job) == {"operation", "input"})
+                result.append(
+                    self._enqueue(
+                        db, owner, job["operation"], job["input"], confirmed, ident
+                    )
+                )
+        return {"suite": ident, "items": result}
 
     def claim(self, worker):
         with self.db() as db:
-            db.execute(
-                "UPDATE jobs SET state='failed',error='TIMEOUT' WHERE worker=? AND state='running' AND started<?",
+            for row in db.execute(
+                "SELECT * FROM jobs WHERE worker=? AND state='running' AND started<?",
                 (worker, self.now() - 600),
-            )
+            ).fetchall():
+                safe = JOB_SPECS.get(row["operation"], {}).get("effect") == "read"
+                db.execute(
+                    "UPDATE jobs SET state=?,error=? WHERE id=?",
+                    (
+                        "failed" if safe else "unknown",
+                        "TIMEOUT" if safe else "UNKNOWN_OUTCOME",
+                        row["id"],
+                    ),
+                )
             if db.execute(
                 "SELECT 1 FROM jobs WHERE worker=? AND state='running'", (worker,)
             ).fetchone():
                 return None
-            row = db.execute(
-                "SELECT * FROM jobs WHERE worker=? AND state='queued' ORDER BY created LIMIT 1",
+            for row in db.execute(
+                "SELECT rowid,* FROM jobs WHERE worker=? AND state='queued' ORDER BY rowid",
                 (worker,),
-            ).fetchone()
-            if not row:
-                return None
-            lease = secrets.token_hex(16)
-            db.execute(
-                "UPDATE jobs SET state='running',lease=?,started=?,attempt=attempt+1 WHERE id=?",
-                (lease, self.now(), row["id"]),
-            )
-            account = db.execute(
-                "SELECT account FROM workers WHERE id=?", (worker,)
-            ).fetchone()
-            check(account and account["account"] == row["account"])
-            return {
-                "type": "job",
-                "id": row["id"],
-                "lease": lease,
-                "operation": row["operation"],
-                "version": JOB_SPECS[row["operation"]]["version"],
-                "input": {},
-                "attempt": row["attempt"] + 1,
-                "account": account["account"],
-            }
+            ).fetchall():
+                spec = JOB_SPECS.get(row["operation"])
+                check(spec and row["version"] == spec["version"])
+                if spec["effect"] == "write":
+                    failed = (
+                        row["suite"]
+                        and db.execute(
+                            "SELECT 1 FROM jobs WHERE suite=? AND rowid<? AND state IN ('failed','unknown','blocked')",
+                            (row["suite"], row["rowid"]),
+                        ).fetchone()
+                    )
+                    unresolved = db.execute(
+                        "SELECT 1 FROM jobs WHERE account=? AND state='unknown'",
+                        (row["account"],),
+                    ).fetchone()
+                    if (
+                        failed
+                        or unresolved
+                        or not self.test_account
+                        or row["account"] != self.test_account
+                    ):
+                        db.execute(
+                            "UPDATE jobs SET state='blocked',error='UNQUALIFIED' WHERE id=?",
+                            (row["id"],),
+                        )
+                        continue
+                lease = secrets.token_hex(16)
+                db.execute(
+                    "UPDATE jobs SET state='running',lease=?,started=?,attempt=attempt+1 WHERE id=?",
+                    (lease, self.now(), row["id"]),
+                )
+                account = db.execute(
+                    "SELECT account FROM workers WHERE id=?", (worker,)
+                ).fetchone()
+                check(account and account["account"] == row["account"])
+                value = json.loads(row["input"])
+                spec["validate_input"](value)
+                result = {
+                    "type": "job",
+                    "id": row["id"],
+                    "lease": lease,
+                    "operation": row["operation"],
+                    "version": row["version"],
+                    "input": value,
+                    "attempt": row["attempt"] + 1,
+                    "account": row["account"],
+                }
+                if spec["effect"] == "write":
+                    result["testScope"] = {
+                        "testOnly": True,
+                        "account": row["account"],
+                        "operation": row["operation"],
+                        "jobId": row["id"],
+                        "expiresAt": int((self.now() + 900) * 1000),
+                        "photoKey": (
+                            photo_key(value["photoUrl"])
+                            if value.get("photoUrl")
+                            else None
+                        ),
+                        "albumId": value.get("albumId"),
+                    }
+                return result
+        return None
 
     def progress(self, worker, ident, lease, phase):
         with self.db() as db:
@@ -274,6 +339,19 @@ class WorkerStore:
                 "UPDATE jobs SET events=? WHERE id=?", (json.dumps(events), ident)
             )
 
+    def result(self, owner, ident):
+        with self.db() as db:
+            row = db.execute(
+                "SELECT * FROM jobs WHERE id=? AND owner=? AND state='succeeded'",
+                (ident, owner),
+            ).fetchone()
+        check(row)
+        return {
+            "operation": row["operation"],
+            "input": json.loads(row["input"]),
+            "result": json.loads(row["result"]),
+        }
+
     def diagnostic(self, owner, ident):
         with self.db() as db:
             row = db.execute(
@@ -291,12 +369,31 @@ class WorkerStore:
     def finish(self, worker, ident, lease, result=None, error=None):
         with self.db() as db:
             row = db.execute(
-                "SELECT * FROM jobs WHERE id=? AND worker=? AND lease=? AND state='running' AND started>?",
-                (ident, worker, lease, self.now() - 600),
+                "SELECT * FROM jobs WHERE id=? AND worker=? AND lease=?",
+                (ident, worker, lease),
             ).fetchone()
             check(row)
+            if row["state"] in ("succeeded", "failed", "unknown"):
+                check(
+                    (json.loads(row["result"]) if row["result"] else None) == result
+                    and row["error"] == error
+                )
+                return
+            check(row["state"] == "running" and row["started"] > self.now() - 600)
             if error is None:
                 JOB_SPECS[row["operation"]]["validate_result"](result)
+                value = json.loads(row["input"])
+                if row["operation"] in ("photo-details", "download-link"):
+                    key = (
+                        result["photo"]["mediaKey"]
+                        if row["operation"] == "photo-details"
+                        else result["mediaKey"]
+                    )
+                    check(key == photo_key(value["photoUrl"]))
+                if row["operation"] == "hash-candidates":
+                    check(
+                        all(item["hash"] in value["hashes"] for item in result["items"])
+                    )
             else:
                 check(result is None)
                 check(
@@ -311,12 +408,45 @@ class WorkerStore:
                         "TIMEOUT",
                         "CIRCUIT_OPEN",
                         "INPUT",
+                        "UNQUALIFIED",
+                        "PRECONDITION",
+                        "UNRESOLVED",
+                        "UNKNOWN_OUTCOME",
+                        "BUSY",
+                        "INTENT_CONFLICT",
                     }
                 )
+            if error is None and row["operation"] == "reconcile-write":
+                original_id = json.loads(row["input"])["originalJobId"]
+                check(result["originalJobId"] == original_id)
+                original = db.execute(
+                    "SELECT * FROM jobs WHERE id=? AND owner=? AND account=? AND state IN ('unknown','succeeded')",
+                    (original_id, row["owner"], row["account"]),
+                ).fetchone()
+                check(
+                    original and JOB_SPECS[original["operation"]]["effect"] == "write"
+                )
+                recovered = {
+                    "verified": True,
+                    "outcome": "reconciled",
+                    "retentionReady": False,
+                }
+                if result.get("albumId"):
+                    recovered["albumId"] = result["albumId"]
+                JOB_SPECS[original["operation"]]["validate_result"](recovered)
+                db.execute(
+                    "UPDATE jobs SET state='succeeded',error=NULL,result=? WHERE id=?",
+                    (json.dumps(recovered), original_id),
+                )
+
             db.execute(
                 "UPDATE jobs SET state=?,result=?,error=? WHERE id=?",
                 (
-                    "failed" if error else "succeeded",
+                    (
+                        "unknown"
+                        if error == "UNKNOWN_OUTCOME"
+                        else "failed" if error else "succeeded"
+                    ),
                     json.dumps(result) if result else None,
                     error,
                     ident,
@@ -342,12 +472,30 @@ class WorkerStore:
                 )
             db.execute("UPDATE workers SET last_seen=0,ready=0 WHERE id=?", (worker,))
 
+    def retire(self, db, worker, reason):
+        for row in db.execute(
+            "SELECT * FROM jobs WHERE worker=? AND state IN ('queued','running')",
+            (worker,),
+        ).fetchall():
+            unknown = (
+                row["state"] == "running"
+                and JOB_SPECS[row["operation"]]["effect"] != "read"
+            )
+            db.execute(
+                "UPDATE jobs SET state=?,error=? WHERE id=?",
+                (
+                    "unknown" if unknown else "failed",
+                    "UNKNOWN_OUTCOME" if unknown else reason,
+                    row["id"],
+                ),
+            )
+
     def revoke(self, owner):
         with self.db() as db:
-            db.execute(
-                "UPDATE jobs SET state='failed',error='REVOKED' WHERE owner=? AND state IN ('queued','running')",
-                (owner,),
-            )
+            for row in db.execute(
+                "SELECT id FROM workers WHERE owner=?", (owner,)
+            ).fetchall():
+                self.retire(db, row["id"], "REVOKED")
             db.execute("DELETE FROM workers WHERE owner=?", (owner,))
             db.execute("DELETE FROM pairing WHERE owner=?", (owner,))
 
@@ -361,12 +509,13 @@ class WorkerStore:
                 if row["account"]
                 else None
             ),
-            "version": JOB_SPECS[row["operation"]]["version"],
+            "version": row["version"],
+            "suite": row["suite"],
             "events": json.loads(row["events"]),
             "attempt": row["attempt"],
             "state": row["state"],
             "created": row["created"],
-            "result": json.loads(row["result"]) if row["result"] else None,
+            "result": summary(json.loads(row["result"])) if row["result"] else None,
             "error": row["error"],
         }
 
@@ -376,7 +525,7 @@ class WorkerStore:
                 "SELECT * FROM workers WHERE owner=? AND expires>?", (owner, self.now())
             ).fetchone()
             jobs = db.execute(
-                "SELECT * FROM jobs WHERE owner=? ORDER BY created DESC,rowid DESC LIMIT 20",
+                "SELECT * FROM jobs WHERE owner=? ORDER BY created DESC,rowid DESC LIMIT 40",
                 (owner,),
             ).fetchall()
         running = any(row["state"] == "running" for row in jobs)
@@ -396,11 +545,28 @@ class WorkerStore:
             ),
             "account": w["account"] if w else None,
             "jobs": [self.public_job(row) for row in jobs],
+            "operations": [
+                {
+                    k: v
+                    for k, v in spec.items()
+                    if k in ("label", "version", "effect", "fields", "result")
+                }
+                | {
+                    "operation": name,
+                    "enabled": spec["effect"] == "read"
+                    or bool(
+                        w and self.test_account and w["account"] == self.test_account
+                    ),
+                }
+                for name, spec in JOB_SPECS.items()
+            ],
         }
 
 
-def install_worker_routes(app, library, session, authorized=lambda owner: True):
-    store = WorkerStore(library.state)
+def install_worker_routes(
+    app, library, session, authorized=lambda owner: True, test_account=""
+):
+    store = WorkerStore(library.state, test_account=test_account)
     active = {}
     app.state.google_workers = store
 
@@ -440,10 +606,29 @@ def install_worker_routes(app, library, session, authorized=lambda owner: True):
     @app.post("/api/v1/google/jobs")
     async def enqueue(req: Request, body: dict):
         owner = session(req, 3, True)["username"]
-        check(set(body) <= {"operation"})
-        result = store.enqueue(owner, body.get("operation", "inventory-counts"))
+        check(set(body) <= {"operation", "input", "confirmTestWrite"})
+        result = store.enqueue(
+            owner,
+            body.get("operation", "inventory-counts"),
+            body.get("input", {}),
+            body.get("confirmTestWrite", False),
+        )
         wake()
         return result
+
+    @app.post("/api/v1/google/suites")
+    async def suite(req: Request, body: dict):
+        owner = session(req, 3, True)["username"]
+        check(set(body) <= {"jobs", "confirmTestWrite"})
+        result = store.suite(
+            owner, body.get("jobs"), body.get("confirmTestWrite", False)
+        )
+        wake()
+        return result
+
+    @app.get("/api/v1/google/jobs/{ident}/result")
+    async def result(ident: str, req: Request):
+        return store.result(session(req, 3)["username"], ident)
 
     @app.get("/api/v1/google/jobs/{ident}/diagnostics")
     async def diagnostics(ident: str, req: Request):
@@ -462,7 +647,7 @@ def install_worker_routes(app, library, session, authorized=lambda owner: True):
 
         async def message():
             raw = await ws.receive_text()
-            check(len(raw) <= 4096)
+            check(len(raw.encode()) <= 256 * 1024)
             value = json.loads(raw)
             check(isinstance(value, dict))
             return value

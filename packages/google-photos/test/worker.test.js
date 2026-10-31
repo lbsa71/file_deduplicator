@@ -53,7 +53,7 @@ test("worker authenticates on WSS, executes only bounded read operation and retu
   await h.worker.receive({
     type: "welcome",
     account: "account-a",
-    protocol: 1,
+    protocol: 2,
   });
   await h.worker.receive(job);
   assert.deepEqual(
@@ -80,7 +80,7 @@ test("unknown operations, changed accounts and jobs before authentication never 
     await h.worker.receive({
       type: "welcome",
       account: "account-a",
-      protocol: 1,
+      protocol: 2,
     });
     await assert.rejects(h.worker.receive({ ...job, ...patch }));
     assert.equal(calls, 0);
@@ -99,7 +99,7 @@ test("duplicate delivery cannot run a read twice and failed reads emit only cont
   await h.worker.receive({
     type: "welcome",
     account: "account-a",
-    protocol: 1,
+    protocol: 2,
   });
   await h.worker.receive(job);
   await h.worker.receive(job);

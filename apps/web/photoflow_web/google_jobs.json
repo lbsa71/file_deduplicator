@@ -1,0 +1,209 @@
+{
+  "inventory-counts": {
+    "label": "Inventory counts",
+    "version": 1,
+    "effect": "read",
+    "fields": {},
+    "result": "counts"
+  },
+  "library-page": {
+    "label": "Library page",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "cursor": "cursor?"
+    },
+    "result": "page"
+  },
+  "favorites-page": {
+    "label": "Favorites page",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "cursor": "cursor?"
+    },
+    "result": "page"
+  },
+  "albums-page": {
+    "label": "Albums page",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "cursor": "cursor?"
+    },
+    "result": "page"
+  },
+  "album-members": {
+    "label": "Album members",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "albumId": "id",
+      "cursor": "cursor?"
+    },
+    "result": "page"
+  },
+  "photo-details": {
+    "label": "Photo details / Takeout URL",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "photoUrl": "photoUrl"
+    },
+    "result": "detail"
+  },
+  "trash-page": {
+    "label": "Trash page",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "cursor": "cursor?"
+    },
+    "result": "page"
+  },
+  "storage-quota": {
+    "label": "Storage quota",
+    "version": 1,
+    "effect": "read",
+    "fields": {},
+    "result": "quota"
+  },
+  "hash-candidates": {
+    "label": "Opaque hash candidates",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "hashes": "hashes"
+    },
+    "result": "matches"
+  },
+  "download-link": {
+    "label": "Original download reference",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "photoUrl": "photoUrl"
+    },
+    "result": "download"
+  },
+  "favorite-set": {
+    "label": "Set favorite",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl",
+      "value": "bool"
+    },
+    "result": "mutation"
+  },
+  "archive-set": {
+    "label": "Set archive",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl",
+      "value": "bool"
+    },
+    "result": "mutation"
+  },
+  "trash": {
+    "label": "Move test photo to Trash",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl"
+    },
+    "result": "mutation"
+  },
+  "restore": {
+    "label": "Restore test photo",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl"
+    },
+    "result": "mutation"
+  },
+  "album-create": {
+    "label": "Create test album",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "title": "title"
+    },
+    "result": "mutation"
+  },
+  "album-add": {
+    "label": "Add photo to test album",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl",
+      "albumId": "id"
+    },
+    "result": "mutation"
+  },
+  "album-remove": {
+    "label": "Remove photo from test album",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl",
+      "albumId": "id"
+    },
+    "result": "mutation"
+  },
+  "description-set": {
+    "label": "Set description",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl",
+      "description": "text"
+    },
+    "result": "mutation"
+  },
+  "timestamp-set": {
+    "label": "Set timestamp",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl",
+      "timestampSec": "epoch",
+      "timezoneSec": "timezone"
+    },
+    "result": "mutation"
+  },
+  "location-set": {
+    "label": "Set location",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl",
+      "centerE7": "coordinates",
+      "visible1E7": "coordinates",
+      "visible2E7": "coordinates",
+      "scale": "scale",
+      "placeId": "id"
+    },
+    "result": "mutation"
+  },
+  "location-clear": {
+    "label": "Clear manually added location",
+    "version": 1,
+    "effect": "write",
+    "fields": {
+      "photoUrl": "photoUrl"
+    },
+    "result": "mutation"
+  },
+  "reconcile-write": {
+    "label": "Reconcile unknown write",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "originalJobId": "id"
+    },
+    "result": "reconciliation"
+  }
+}

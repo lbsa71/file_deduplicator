@@ -2,6 +2,10 @@
 
 Status: Accepted; initial read-only worker implemented — 2026-10-31.
 
+The inventory-only protocol described below is the initial release.
+[ADR 0005](0005-google-job-qualification.md) extends it with protocol 2, typed
+job suites and separately gated isolated-account mutation pilots.
+
 Ubuntu owns policy, pairing and durable jobs. The desktop extension opens an
 outbound WSS connection and runs explicit operations inside its authenticated
 Google Photos tab. Google cookies and page session values stay on the desktop.

@@ -236,11 +236,11 @@ merely because its associated image has moved.
 ## Google Photos desktop worker
 
 Administrators now have a Google Photos connection control in the header. Install
-[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.2.0.zip)
+[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.3.0.zip)
 as an unpacked Chrome/Edge extension. Choose the folder containing manifest.json;
 source installation is deliberately disabled. Existing installations must rebuild
-and manually reload their unpacked extension. Version 0.2 adds alarms and access
-to photos.lbsa71.net for pairing and job transport.
+and manually reload their unpacked extension. Version 0.3 uses job protocol 2 and must be loaded alongside the updated server;
+its permissions are unchanged from 0.2.
 
 Open Google Photos, use Check connection, and copy its account value into the
 PhotoFlow connection panel. Create a pairing code there, paste it into the
@@ -262,6 +262,15 @@ latest worker diagnostics from the extension. Correlate job ID/attempt/phase;
 review sanitized data before sharing. These diagnostics do not prove remote
 absence or authorize removal. See [ADR 0004](spec/adr/0004-desktop-google-worker.md)
 for the protocol, storage, bounds and procedure for adding job types.
+
+The operation workbench offers a prepared finite read suite, isolated write pilot
+suite, individual typed jobs and private result inspection. Pilot writes are disabled
+unless an operator explicitly configures a separate disposable Google account.
+This is a real Google account with synthetic photos, not an account created by
+PhotoFlow. See [ADR 0005](spec/adr/0005-google-job-qualification.md) for the full
+catalogue, setup, test fixture conventions, suite effects and recovery procedure.
+Production retention mutations, image-upload jobs and media download transfers
+are not enabled by this workbench.
 
 Developer verification (Node 22, Python web dependencies, OpenSSL and Chromium):
 

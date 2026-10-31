@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { GoogleJobConsole } from "./google-job-console.jsx";
 const labels = {
   unpaired: "Connect Google Photos",
   offline: "Google browser offline",
@@ -14,7 +15,8 @@ export function GoogleConnection({ api }) {
     [account, setAccount] = useState(""),
     [pair, setPair] = useState(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [result, setResult] = useState(null);
   useEffect(() => {
     let active = true;
     let timer;
@@ -61,7 +63,7 @@ export function GoogleConnection({ api }) {
           </p>
           <p>
             Install the{" "}
-            <a href="/tools/google-photos-worker-0.2.0.zip">
+            <a href="/tools/google-photos-worker-0.3.0.zip">
               PhotoFlow extension
             </a>{" "}
             in Chrome or Edge. Open Google Photos and use its Check connection
@@ -110,9 +112,8 @@ export function GoogleConnection({ api }) {
             </div>
           )}
           <p>
-            The desktop browser runs read-only inventory jobs. Its Google
-            session stays on your desktop. Counts alone cannot authorize cloud
-            changes.
+            The desktop browser executes typed jobs. Its Google session stays on
+            your desktop. Counts alone cannot authorize cloud changes.
           </p>
           <button
             disabled={busy || !status?.account}
@@ -131,12 +132,36 @@ export function GoogleConnection({ api }) {
           >
             Disconnect Google worker
           </button>
+          <GoogleJobConsole
+            operations={status?.operations || []}
+            paired={!!status?.account}
+            busy={busy}
+            act={act}
+            call={(...args) => call.current(...args)}
+          />
           <ol>
             {status?.jobs?.map((job) => (
               <li key={job.id}>
-                Inventory: {job.state}
-                {job.result &&
+                {job.operation}: {job.state}
+                {job.result?.photos !== undefined &&
                   ` — ${job.result.photos} items, ${job.result.favorites} favorites, ${job.result.albums} albums`}
+                {job.result?.itemCount !== undefined &&
+                  ` — ${job.result.itemCount} returned items`}
+                {job.result?.outcome && ` — ${job.result.outcome}`}
+                {job.state === "succeeded" && (
+                  <button
+                    onClick={() =>
+                      act(async () => {
+                        const value = await call.current(
+                          `/google/jobs/${job.id}/result`,
+                        );
+                        setResult(value);
+                      })
+                    }
+                  >
+                    View private result
+                  </button>
+                )}
                 {job.error && ` (${job.error})`}
                 {job.events?.length > 0 && ` — ${job.events.at(-1).phase}`}
                 <button
@@ -163,6 +188,15 @@ export function GoogleConnection({ api }) {
               </li>
             ))}
           </ol>
+          {result && (
+            <div>
+              <p>
+                Private job result — contains Google identifiers and metadata.
+              </p>
+              <button onClick={() => setResult(null)}>Close result</button>
+              <pre>{JSON.stringify(result, null, 2)}</pre>
+            </div>
+          )}
           {error && <p role="alert">{error}</p>}
         </section>
       )}

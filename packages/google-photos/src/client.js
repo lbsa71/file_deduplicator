@@ -123,6 +123,107 @@ export class GooglePhotosClient {
       throw error;
     }
   }
+  async page(kind, args = {}) {
+    requireThat(
+      ["inventory", "favorites", "albums", "albumItems", "trash"].includes(
+        kind,
+      ),
+      "Unsupported page kind",
+      "INPUT",
+    );
+    const page = parsePage(
+      await this.#read(kind, { ...args, limit: 50 }),
+      kind,
+      args.albumId,
+    );
+    requireThat(page.items.length <= 500, "Page exceeds inspection limit");
+    return { ...page, complete: page.next === null, retentionReady: false };
+  }
+  async quota() {
+    const data = await this.#read("quota"),
+      row = array(data[6], "quota");
+    requireThat(
+      [row[0], row[1], row[3]].every((v) => Number.isSafeInteger(v) && v >= 0),
+      "Unknown storage quota",
+    );
+    requireThat(row[0] <= row[1] && row[3] <= row[0], "Invalid storage quota");
+    return { used: row[0], total: row[1], photosUsed: row[3] };
+  }
+  async downloadLink(mediaKey) {
+    const data = await this.#read("downloadLink", { mediaKey });
+    requireThat(
+      typeof data[0] === "string" && data[0].length <= 8192,
+      "Unknown download reference",
+    );
+    const url = new URL(data[0]);
+    requireThat(
+      url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        ["photos.google.com", "googleusercontent.com"].some(
+          (h) => url.hostname === h || url.hostname.endsWith("." + h),
+        ),
+      "Unapproved download host",
+    );
+    return { url: url.href };
+  }
+  async observation(mediaKey) {
+    const basicData = await this.#read("item", { mediaKey });
+    const basic = parseDetails(basicData, mediaKey);
+    const extendedData = await this.#read("details", { mediaKey });
+    const extended = parseDetails(extendedData, mediaKey, true);
+    const row = extendedData[0];
+    requireThat(
+      basic.dedupKey === extended.dedupKey,
+      "Conflicting photo identities",
+    );
+    const nullableNumber = (value) => {
+      requireThat(
+        value == null || Number.isSafeInteger(value),
+        "Invalid timestamp",
+      );
+      return value ?? null;
+    };
+    const coordinates = (value) => {
+      if (value == null) return null;
+      requireThat(
+        Array.isArray(value) &&
+          value.length === 2 &&
+          value.every(Number.isSafeInteger) &&
+          Math.abs(value[0]) <= 900000000 &&
+          Math.abs(value[1]) <= 1800000000,
+        "Invalid E7 coordinates",
+      );
+      return value;
+    };
+    requireThat(
+      row[1] == null || typeof row[1] === "string",
+      "Invalid description",
+    );
+    let manualLocationE7 = row[13];
+    if (manualLocationE7 !== null && manualLocationE7 !== undefined) {
+      requireThat(
+        Array.isArray(manualLocationE7) && Array.isArray(manualLocationE7[0]),
+        "Unknown manual location",
+      );
+      manualLocationE7 = coordinates(manualLocationE7[0]);
+    }
+    return {
+      ...basic,
+      ...extended,
+      archived:
+        basicData[0][13] === true
+          ? true
+          : basicData[0][13] === false
+            ? false
+            : null,
+      description: row[1] ?? null,
+      timestampMs: nullableNumber(row[3]),
+      timezoneMs: nullableNumber(row[4]),
+      locationE7: coordinates(row[13]?.[0] ?? row[9]?.[0]),
+      manualLocationE7,
+    };
+  }
   inventory() {
     return this.#pages("inventory");
   }

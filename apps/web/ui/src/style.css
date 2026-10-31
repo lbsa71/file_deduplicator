@@ -567,3 +567,7 @@ button:disabled {
 .google-panel button {
   margin: 0.25rem;
 }
+
+.google-panel pre {white-space:pre-wrap;overflow-wrap:anywhere;max-height:20rem;overflow:auto;}
+.google-panel textarea,.google-panel select {display:block;width:100%;box-sizing:border-box;}
+.google-panel input[type=checkbox] {display:inline;width:auto;}

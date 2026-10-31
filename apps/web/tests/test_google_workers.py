@@ -1,6 +1,6 @@
 import tempfile, unittest
 from pathlib import Path
-from photoflow_web.google_workers import WorkerStore
+from photoflow_web.google_workers import WorkerStore, JOB_PROTOCOL_VERSION, JOB_SPECS
 
 
 class WorkerStoreTests(unittest.TestCase):
@@ -176,8 +176,11 @@ class WorkerHTTPTests(unittest.TestCase):
                     "type": "auth",
                     "token": pair["token"],
                     "account": "google-a",
-                    "protocol": 1,
-                    "capabilities": [{"operation": "inventory-counts", "version": 1}],
+                    "protocol": JOB_PROTOCOL_VERSION,
+                    "capabilities": [
+                        {"operation": name, "version": spec["version"]}
+                        for name, spec in JOB_SPECS.items()
+                    ],
                 }
             )
             self.assertEqual(ws.receive_json()["type"], "welcome")

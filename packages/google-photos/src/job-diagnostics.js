@@ -33,6 +33,30 @@ export class JobDiagnostics {
     try {
       const entry = {
         rpc: request.rpc,
+        ...([
+          "TEST_MODE",
+          "ACCOUNT",
+          "OPERATION",
+          "RPC",
+          "JOB_ID",
+          "EXPIRY",
+          "PHOTO_TARGET",
+          "ALBUM_TARGET",
+        ].includes(response?.scopeRule)
+          ? { scopeRule: response.scopeRule }
+          : {}),
+        ...([
+          "ORIGIN",
+          "SESSION",
+          "ACCOUNT",
+          "BODY",
+          "SIZE",
+          "TRANSPORT",
+          "INPUT",
+          "UNQUALIFIED",
+        ].includes(response?.error)
+          ? { transportError: response.error }
+          : {}),
         input: this.sanitizer.value(request.data),
         response: this.sanitizer.response(
           {
@@ -84,6 +108,12 @@ export class JobDiagnostics {
         "TIMEOUT",
         "CIRCUIT_OPEN",
         "INPUT",
+        "UNQUALIFIED",
+        "PRECONDITION",
+        "UNRESOLVED",
+        "UNKNOWN_OUTCOME",
+        "BUSY",
+        "INTENT_CONFLICT",
       ].includes(error?.code)
         ? error.code
         : "PROTOCOL",

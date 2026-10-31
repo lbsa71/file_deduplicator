@@ -8,8 +8,8 @@ This release implements strict read adapters, a guarded mutation executor,
 documented API uploading, retention decisions, durable journals, and passive
 capture tools. It is tested against synthetic browser interactions and sanitized
 Toolkit fixtures. **Live inventory/favorites/album-list enumeration is qualified for the tested
-account. Other live operations remain pending; production cloud cleanup is disabled.** The supplied browser transport is deliberately
-read-only until the mutation protocol has been qualified with disposable media.
+account. Other live operations remain pending; production cloud cleanup is disabled.** The browser transport permits personal-account reads and explicitly scoped
+isolated-account mutation pilots. Production cloud mutations remain gated.
 
 ## Install and test
 
@@ -308,15 +308,25 @@ read; check status before starting another operation.
 This probe has synthetic browser coverage. Live selected-album/photo qualification
 must still be performed and reported separately.
 
-## Desktop job worker (0.2)
+## Desktop job worker (0.3 / protocol 2)
 
 The extension now pairs with PhotoFlow and opens an outbound WSS connection.
-Its single registered operation is read-only `inventory-counts` version 1. The
-server persists counts and progress with `retentionReady: false`. This does not
-enable browser mutations or upload images. Google cookies/session values remain
-in the browser; the server credential is a separate PhotoFlow token.
+The versioned catalogue registers 22 typed jobs: inventory and bounded pages,
+selected item/album details, quota, opaque hash candidates, original-download
+availability, eleven isolated mutation pilots, and read-only reconciliation.
+The server persists validated results and progress with `retentionReady: false`.
+Google cookies/session values remain in the browser; the server credential is a
+separate PhotoFlow token. The download probe does not transfer image bytes and
+image-upload jobs are not implemented in this release.
 
-The standalone exports `./worker`, `./jobs`, and `./job-diagnostics` provide the
+The workbench prepares finite read/pilot suites or a single typed operation. Pilot
+writes require an operator-configured separate disposable Google account, explicit
+confirmation, small synthetic images and private test albums. The default production
+configuration enables reads only. See [ADR 0005](../../apps/web/spec/adr/0005-google-job-qualification.md)
+for setup, all operations, fixture requirements and unknown-outcome recovery.
+
+The standalone exports `./worker`, `./jobs`, `./google-job-handlers`, `./toolkit-pilot`,
+`./browser-journal` and `./job-diagnostics` provide the
 transport executor, explicit versioned contracts, and bounded sanitized evidence.
 Handlers receive phase/reporting hooks and must be registered explicitly. Server
 and extension capability sets must match. The application adapter lives in
@@ -332,5 +342,6 @@ extension procedure, job contract, recovery rules, and new-operation checklist.
 `npm run test:worker` launches the real companion and a disposable local HTTPS/WSS
 server. Set PHOTOFLOW_TEST_PYTHON to a Python interpreter with the web dependencies,
 build the web frontend and extension first, and install Chromium. This test uses
-only synthetic Google responses. Native Windows needs a configured Python/OpenSSL
+only synthetic Google responses, including every job type and a lost write
+acknowledgement resolved without replay. Native Windows needs a configured Python/OpenSSL
 environment; the Linux FileJournal contract remains unchanged.

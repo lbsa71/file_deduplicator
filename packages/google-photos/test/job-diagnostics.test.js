@@ -44,3 +44,11 @@ test("bounded diagnostics retain the latest failed read and a controlled parser 
   assert.equal(result.limited, true);
   assert.ok(!JSON.stringify(result).includes("PRIVATE_"));
 });
+
+test("read diagnostics expose only fixed transport error codes", () => {
+  const d = new JobDiagnostics({ id: "a", operation: "inventory-counts" });
+  d.read({ rpc: "VrseUb", data: [] }, { error: "UNQUALIFIED" });
+  assert.equal(d.snapshot().entries[0].transportError, "UNQUALIFIED");
+  d.read({ rpc: "VrseUb", data: [] }, { error: "PRIVATE_TOKEN" });
+  assert.ok(!JSON.stringify(d.snapshot()).includes("PRIVATE_"));
+});

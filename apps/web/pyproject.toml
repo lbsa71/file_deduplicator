@@ -13,4 +13,4 @@ photoflow-web-migrate = "photoflow_web.migrate:main"
 [tool.setuptools.packages.find]
 include = ["photoflow_web*"]
 [tool.setuptools.package-data]
-photoflow_web = ["static/**/*", "static/*"]
+photoflow_web = ["static/**/*", "static/*", "google_jobs.json"]

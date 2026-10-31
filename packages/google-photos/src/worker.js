@@ -11,6 +11,12 @@ const codes = new Set([
   "TIMEOUT",
   "CIRCUIT_OPEN",
   "INPUT",
+  "UNQUALIFIED",
+  "PRECONDITION",
+  "UNRESOLVED",
+  "UNKNOWN_OUTCOME",
+  "BUSY",
+  "INTENT_CONFLICT",
 ]);
 export class DesktopWorker {
   constructor({
@@ -67,14 +73,16 @@ export class DesktopWorker {
         token: this.token,
         account: this.account,
         protocol: JOB_PROTOCOL_VERSION,
-        capabilities: capabilities(),
+        capabilities: capabilities().filter(
+          (item) => typeof this.handlers[item.operation] === "function",
+        ),
       }),
     );
     socket.addEventListener("message", (event) => {
       chain = chain
         .then(() => {
           requireThat(
-            typeof event.data === "string" && event.data.length <= 4096,
+            typeof event.data === "string" && event.data.length <= 16384,
             "Invalid worker message",
           );
           return this.receive(JSON.parse(event.data));
@@ -90,8 +98,15 @@ export class DesktopWorker {
     return this;
   }
   send(value) {
-    if (!this.stopped && this.socket?.readyState === 1)
-      this.socket.send(JSON.stringify(value));
+    if (!this.stopped && this.socket?.readyState === 1) {
+      const encoded = JSON.stringify(value);
+      requireThat(
+        new TextEncoder().encode(encoded).length <= 256 * 1024,
+        "Worker result exceeds limit",
+        "SIZE",
+      );
+      this.socket.send(encoded);
+    }
   }
   async receive(message) {
     requireThat(message && typeof message === "object", "Invalid job");
@@ -111,6 +126,7 @@ export class DesktopWorker {
     if (message.type === "heartbeat" || message.type === "receipt") return;
     requireThat(
       message.type === "job" &&
+        Object.hasOwn(JOBS, message.operation) &&
         JOBS[message.operation]?.version === message.version &&
         typeof this.handlers[message.operation] === "function" &&
         message.account === this.account,
@@ -153,6 +169,7 @@ export class DesktopWorker {
         phase,
         recordRead: (request, response) => diagnostics.read(request, response),
         isActive: () => this.authenticated && !this.stopped,
+        job: message,
       });
       await phase("verifying");
       requireThat(
@@ -160,11 +177,13 @@ export class DesktopWorker {
         "Google account changed",
         "ACCOUNT",
       );
-      requireThat(
-        result?.complete === true && result.retentionReady === false,
-        "Invalid inventory result",
-      );
+
       JOBS[message.operation].validateResult(result);
+      requireThat(
+        new TextEncoder().encode(JSON.stringify(result)).length <= 240 * 1024,
+        "Worker result exceeds limit",
+        "SIZE",
+      );
       await phase("complete");
       this.ready = true;
       result = { type: "result", id: message.id, lease: message.lease, result };

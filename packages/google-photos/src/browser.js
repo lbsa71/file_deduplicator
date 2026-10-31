@@ -1,10 +1,21 @@
 import { ProtocolError } from "./errors.js";
 
 // Self-contained so Chrome scripting or Playwright can serialize it into the
-// authenticated page. Session values stay there. This shipped transport is
-// read-only; mutation transports require separate live qualification.
+// authenticated page. Session values stay there. Writes require an explicit
+// isolated-account pilot scope; production mutations remain separately gated.
 export function pageRequest(request) {
   const fail = (error) => ({ error });
+  // Chrome argument conversion can omit null object properties. Serialize the
+  // complete request so absent targets remain explicit, validated nulls.
+  if (typeof request === "string") {
+    try {
+      request = JSON.parse(request);
+    } catch {
+      return fail("INPUT");
+    }
+  }
+  if (!request || typeof request !== "object" || Array.isArray(request))
+    return fail("INPUT");
   if (globalThis.location?.origin !== "https://photos.google.com")
     return fail("ORIGIN");
   const session = globalThis.WIZ_global_data;
@@ -22,8 +33,47 @@ export function pageRequest(request) {
     "VrseUb",
     "fDcn4b",
     "swbisb",
+    "EzwWhf",
+    "pLFTfd",
   ]);
-  if (request.mode !== "read" || !allowed.has(request.rpc))
+  const writes = {
+    "favorite-set": "Ftfh0",
+    "archive-set": "w7TP3c",
+    trash: "XwAOJf",
+    restore: "XwAOJf",
+    "album-create": "OXvT9d",
+    "album-add": "E1Cajb",
+    "album-remove": "ycV3Nd",
+    "description-set": "AQNOFd",
+    "timestamp-set": "DaSgWe",
+    "location-set": "EtUHOe",
+    "location-clear": "EtUHOe",
+  };
+  if (request.mode === "write") {
+    const scope = request.testScope;
+    const checks = [
+      [scope?.testOnly === true, "TEST_MODE"],
+      [scope?.account === request.account, "ACCOUNT"],
+      [scope?.operation === request.operation, "OPERATION"],
+      [writes[request.operation] === request.rpc, "RPC"],
+      [
+        typeof scope?.jobId === "string" &&
+          scope.jobId.length > 0 &&
+          scope.jobId.length <= 128,
+        "JOB_ID",
+      ],
+      [
+        Number.isSafeInteger(scope?.expiresAt) &&
+          scope.expiresAt > Date.now() &&
+          scope.expiresAt <= Date.now() + 3600000,
+        "EXPIRY",
+      ],
+      [scope?.photoKey === (request.targetMediaKey ?? null), "PHOTO_TARGET"],
+      [scope?.albumId === (request.targetAlbumId ?? null), "ALBUM_TARGET"],
+    ];
+    const rejected = checks.find(([passed]) => !passed);
+    if (rejected) return { error: "UNQUALIFIED", scopeRule: rejected[1] };
+  } else if (request.mode !== "read" || !allowed.has(request.rpc))
     return fail("UNQUALIFIED");
   if (!Array.isArray(request.data)) return fail("INPUT");
   if (

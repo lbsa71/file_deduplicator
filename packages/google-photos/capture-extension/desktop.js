@@ -1,3 +1,6 @@
+import { createGoogleJobHandlers } from "./lib/google-job-handlers.js";
+import { BrowserJournal } from "./lib/browser-journal.js";
+import { JOB_PROTOCOL_VERSION } from "./lib/jobs.js";
 import { DesktopWorker } from "./lib/worker.js";
 import { GooglePhotosClient } from "./lib/client.js";
 import { pageRequest, createPageTransport } from "./lib/browser.js";
@@ -12,6 +15,7 @@ export function installDesktopWorker(evaluate) {
   const privateStorage = chrome.storage.local.setAccessLevel({
     accessLevel: "TRUSTED_CONTEXTS",
   });
+  const journal = new BrowserJournal(chrome.storage.local);
   async function credentials() {
     await privateStorage;
     return (await chrome.storage.local.get("googleWorker")).googleWorker;
@@ -46,47 +50,52 @@ export function installDesktopWorker(evaluate) {
       token: saved.token,
       origin,
       getAccount: async () => (await account()).account,
-      runInventory: async (expected, { phase, recordRead, isActive }) => {
-        const selected = await account();
-        if (selected.account !== expected)
-          throw Object.assign(new Error(), { code: "ACCOUNT" });
-        const client = new GooglePhotosClient({
-          account: expected,
-          transport: createPageTransport({
-            evaluate: async (fn, arg) => {
-              if (!isActive())
-                throw Object.assign(new Error(), { code: "TRANSPORT" });
-              const response = await bounded(
-                () => evaluate(selected.tabId, fn, arg),
-                40000,
-              );
-              recordRead(arg, response);
-              return response;
-            },
-          }),
-        });
-        await phase("library");
-        const inventory = await client.inventory();
-        await phase("favorites");
-        const favorites = await client.favorites();
-        await phase("albums");
-        const albums = await client.albums();
-        state = "connected";
-        return {
-          photos: inventory.items.length,
-          favorites: favorites.items.length,
-          albums: albums.items.length,
-          complete: true,
-          retentionReady: false,
-        };
-      },
+      handlers: createGoogleJobHandlers({
+        journal,
+        readerFactory: async (expected, context) => {
+          const selected = await account();
+          if (selected.account !== expected)
+            throw Object.assign(new Error(), { code: "ACCOUNT" });
+          return new GooglePhotosClient({
+            account: expected,
+            maxPages: context.job.operation === "inventory-counts" ? 10000 : 5,
+            maxItems:
+              context.job.operation === "inventory-counts" ? 1000000 : 1000,
+            transport: createPageTransport({
+              evaluate: async (fn, arg) => {
+                if (!context.isActive())
+                  throw Object.assign(new Error(), { code: "TRANSPORT" });
+                const response = await bounded(
+                  () => evaluate(selected.tabId, fn, arg),
+                  40000,
+                );
+                context.recordRead(arg, response);
+                return response;
+              },
+            }),
+          });
+        },
+        writeFactory: (expected, context) => async (request) => {
+          if (!context.isActive())
+            throw Object.assign(new Error(), { code: "TRANSPORT" });
+          const selected = await account();
+          if (selected.account !== expected)
+            throw Object.assign(new Error(), { code: "ACCOUNT" });
+          const response = await bounded(
+            () => evaluate(selected.tabId, pageRequest, request),
+            40000,
+          );
+          context.recordRead(request, response);
+          return response;
+        },
+      }),
       saveDiagnostics: async (value) => {
         if (worker !== current) return;
         await chrome.storage.session.set({ workerDiagnostics: value });
       },
       saveReceipt: async (result) => {
         if (worker !== current) return;
-        if (result.error) state = "needs_login";
+        state = result.error ? "needs_login" : "connected";
         await chrome.storage.local.set({ googleWorkerReceipt: result });
       },
       onClose: (event) => {
@@ -139,7 +148,7 @@ export function installDesktopWorker(evaluate) {
       return {
         state,
         paired: !!(await credentials()),
-        protocol: 1,
+        protocol: JOB_PROTOCOL_VERSION,
         lastCloseCode,
       };
     if (action === "worker-disconnect") {

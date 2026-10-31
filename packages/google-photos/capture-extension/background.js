@@ -22,7 +22,7 @@ async function evaluate(id, fn, arg) {
     world: "MAIN",
     injectImmediately: true,
     func: fn,
-    args: [arg],
+    args: [JSON.stringify(arg)],
   });
   if (results.length !== 1 || results[0].frameId !== 0)
     throw new Error("Unexpected browser frame");

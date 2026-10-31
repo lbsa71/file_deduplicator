@@ -25,6 +25,9 @@ numbers are acceptance targets to measure, not results already achieved.
 
 ## Architecture decisions
 
+- [ADR 0005: Typed Google jobs and isolated mutation qualification](adr/0005-google-job-qualification.md)
+  defines the operation catalogue, finite suites and disposable-account pilot setup.
+
 - [ADR 0004: Desktop Google worker](adr/0004-desktop-google-worker.md) describes
   paired WSS jobs, persistent results and the investigation/diagnostic workflow.
 

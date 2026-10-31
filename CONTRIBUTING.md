@@ -96,3 +96,7 @@ library/capture package and initial read-only WSS worker are implemented. Live
 count enumeration is qualified; other operations and production cloud mutations
 remain gated. Follow [ADR 0004](apps/web/spec/adr/0004-desktop-google-worker.md)
 when adding job types and collecting diagnostic evidence.
+
+Typed job contracts, isolated pilot configuration and qualification suites follow
+[ADR 0005](apps/web/spec/adr/0005-google-job-qualification.md). A configured test
+account is never a substitute for separately qualifying production mutations.
