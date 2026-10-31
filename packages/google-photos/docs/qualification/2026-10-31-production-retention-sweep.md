@@ -165,3 +165,24 @@ unit tests pass. The selected-account synthetic HTTPS/WSS extension test complet
 40 jobs and 151 fixture Google requests, including full inventory, preserved
 Takeout preparation, hash-bound commit and verified production-scope Trash. It
 made no real Google requests. Contract synchronization and production builds pass.
+
+## Production execution started
+
+Commit `985b684` was deployed to the actual production host (`192.168.1.4`,
+`photoflow-web`); public health returned 200 and the existing paired extension was
+reloaded without replacing its installation. The owner login survived the restart.
+
+The production preparation reverified local evidence and sealed an executable
+manifest containing exactly 7,684 reversible Trash operations and 3,759 retained
+Google items. Its target set was compared with the earlier private audit: every
+target had verified local bytes and a preserved exact Takeout document, and no
+protected, remote-only, known-motion or ambiguous candidate was included. No
+upload, download or permanent-delete operation was present.
+
+The owner-authorized commit was started through the production web UI. At the
+first live execution qualification checkpoint, 57 distinct production worker
+receipts had `outcome: verified`, each following positive exact target membership
+in Google Trash; the next target was in flight and no worker errors were present.
+The full sweep was still running at that checkpoint. This is evidence that real
+production Trash execution works, not a claim that all 7,684 operations completed.
+Private manifests, job IDs, progress artifacts and screenshots remain outside Git.
