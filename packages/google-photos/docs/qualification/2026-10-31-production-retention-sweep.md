@@ -61,13 +61,86 @@ recover old RAM-only sessions, so one final sign-in was requested. Preservation 
 a real owner's session over a subsequent production restart remains to be observed;
 the restart tests used synthetic accounts.
 
+## Whole-account inventory and recovery qualified
+
+The replacement read-only preparation completed the library, favorites, album
+list and every album's member pages. It enumerated 11,443 Google items, 277
+favorites and 16 albums, against 24,272 active local records (including duplicate
+review records). Its immutable private manifest's canonical SHA-256 was checked
+independently and matched the app's review screen.
+
+The snapshot classified 3,109 remote items as keep and 8,334 as blocked
+review-trash candidates. All 100 remote items without a local candidate were kept.
+A candidate reference is not verified availability or removal permission. The
+7,307 local publication candidates also remain held. The complete manifest has
+only one executable quota read; it has no Trash or upload operation.
+
+Enumeration stopped on the deliberately empty private test album. Its Google UI
+showed “No items,” while `snAcKc` returned null items, an explicit empty cursor,
+the exact album identity and an observed `[0,0]` context sentinel. The qualified
+parser accepts only this bounded empty form. Missing/changed context, nonterminal
+cursors, nonzero sentinels and wrong identities remain errors. A fresh live read
+then succeeded with zero items.
+
+The same stopped preparation was explicitly resumed using `59c4548`: completed
+pages were reused, only its unfinished read received a new attempt-scoped worker
+request, and old failed jobs remained intact. The manifest records that successful
+request's actual key. Commit keys and mutation replay rules are unchanged.
+
+The worker now prunes only old server-acknowledged delivery history while keeping
+recent duplicates and every unacknowledged result. A 250-job regression proves
+bounded history and no replay of recent deliveries. Durable mutation journals are
+independent of this cache. This removes the former 100-job interruption during
+long inventories.
+
+All 143 package tests and 140 backend tests pass. The final synthetic extension
+run completed 36 jobs with 141 fixture Google requests and no real Google traffic.
+After the deployment restart, the real owner's login was still valid; native
+Chrome and a refreshed tab binding confirmed access without another sign-in.
+
+A five-photo preservation/verification manifest used only items with existing
+local candidates. Its first direct-original transfer stopped with a controlled
+HTTP failure (`DOWNLOAD_TRANSPORT` in server diagnostics); the other four were
+not dispatched. The owner then clarified that periodic manual Takeouts are the
+download workflow and requested no further focus on automatic downloads. No
+replacement download or Google mutation was queued.
+
+Recovery receipts were tightened in `cc47c12`: they require an account-, media-,
+dedup-revision- and hash-matching local association. Changed Google observations
+are preserved as distinct provenance rather than silently conflated. Transport
+failures now report only allowlisted exception classes, without signed URLs.
+All 143 backend tests pass; the synthetic extension check still completed its
+36 jobs. The deployed service is healthy. Direct-original transport remains
+unqualified on this host and is not a prerequisite for the manual Takeout workflow.
+
+## Read-only local Takeout audit
+
+A separate filesystem audit checked all 8,334 blocked candidates against the
+completed manifest's frozen local record revisions. It changed no original or
+sidecar and made no Google requests. For each unambiguous candidate it checked
+the current filesystem fingerprint, sidecar SHA-256/revision, full original-byte
+SHA-256, exact embedded Google photo URL, matching Takeout title/original filename,
+and the preserved Takeout document's raw hash/content. Local files and sidecars
+were rechecked around the read. Conflicting candidate hashes remained ambiguous.
+
+Results: 8,333 candidates have verified unchanged local bytes and matching
+preserved Takeout documents; one has ambiguous local content and remains kept.
+The verified group includes 649 known motion-photo items whose companions still
+need separate proof. The remaining 7,684 have no positive motion flag; that does
+not itself prove companion absence. All 100 remote items without local candidates
+remain kept by the full manifest.
+
+The private audit explicitly says `remoteBytesCompared: false` and
+`authorizesTrash: false`. It proves local Takeout evidence, not current Google
+byte equality, companion completeness, ownership or production execution authority.
+The failed optional download batch has not upgraded any retention fact.
+
 ## Next gates
 
-1. Complete library, favorite, all album and member pagination before drawing
-   conclusions about absence or unprotected status.
-2. Assemble and qualify exact local-original/current-remote-byte evidence and a
-   production authority path distinct from disposable qualification pilots.
-3. Review a finite manifest and qualify a bounded production batch before the
+1. Build the reviewed Takeout-based cleanup path from the audited local evidence,
+   fresh Google protection/identity checks, companion checks and an authority
+   path distinct from disposable qualification pilots. Preserve all unknown holds.
+2. Review a finite manifest and qualify a bounded production batch before the
    broader sweep. No automatic full-account Trash is enabled by this revision.
 
 The image publisher is outside this cleanup-only scope. Unknown ownership,

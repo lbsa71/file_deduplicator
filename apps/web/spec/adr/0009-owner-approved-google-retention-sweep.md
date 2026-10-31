@@ -9,6 +9,12 @@ verification of that backup. This supersedes the independent-backup verification
 requirement in ADRs 0003 and 0008 and the standalone retention policy/executor.
 Do not report the owner assertion as verified evidence.
 
+The owner subsequently clarified that downloads will come from periodic manual
+Takeout exports. Automatic original downloading is optional and is not the focus
+of this production sweep. Validate existing local Takeout bytes and provenance;
+keep fresh Google protection/identity checks distinct, and never claim current
+remote byte equality from a Takeout association alone.
+
 ## Retention rule
 
 Keep a Google item if any of these applies:
