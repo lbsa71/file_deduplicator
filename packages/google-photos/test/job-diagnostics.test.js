@@ -28,7 +28,7 @@ test("rejected page identifiers expose only field shape in worker diagnostics", 
     d.failure(error);
     const result = d.snapshot();
     assert.equal(result.failure.validation.field, field);
-    assert.equal(result.failure.validation.expected, "id");
+    assert.equal(result.failure.validation.expected, field === "dedupKey" ? "dedupKey" : "id");
     assert.equal(result.failure.validation.valueType, "string");
     assert.equal(result.failure.validation.length, value.length);
     assert.equal(result.failure.validation.containsPlus, value.includes("+"));

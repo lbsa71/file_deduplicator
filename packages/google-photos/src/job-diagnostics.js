@@ -129,6 +129,7 @@ export class JobDiagnostics {
       ["field", "mediaKey", "dedupKey", "albumId"].includes(validation.field) &&
       [
         "id",
+        "dedupKey",
         "cursor",
         "bool",
         "text",

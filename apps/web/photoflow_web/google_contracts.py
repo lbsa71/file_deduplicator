@@ -34,6 +34,9 @@ def field(kind, value):
         return
     if kind == "id":
         check(isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,256}", value))
+    elif kind == "dedupKey":
+        check(isinstance(value, str) and 0 < len(value) <= 256
+              and re.fullmatch(r"[A-Za-z0-9_-]+(?::[A-Za-z0-9_-]+)*", value))
     elif kind == "cursor":
         check(
             isinstance(value, str)
@@ -130,7 +133,7 @@ def media(value, namespace=None):
         and (namespace is None or value["namespace"] == namespace)
     )
     field("id", value["mediaKey"])
-    field("id", value["dedupKey"])
+    field("dedupKey", value["dedupKey"])
     for name in ("favorite", "companion"):
         check(value[name] is None or type(value[name]) is bool)
     if value["trashTimestamp"] is not None:

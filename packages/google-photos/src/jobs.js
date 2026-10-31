@@ -42,6 +42,9 @@ export function validateField(type, value, field = "field") {
   }
   const rules = {
     id: () => typeof value === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(value),
+    dedupKey: () =>
+      typeof value === "string" && value.length <= 256 &&
+      /^[A-Za-z0-9_-]+(?::[A-Za-z0-9_-]+)*$/.test(value),
     cursor: () =>
       typeof value === "string" &&
       value.length > 0 &&
@@ -148,7 +151,7 @@ function media(value, namespace) {
     "Wrong media namespace",
   );
   fieldId(value.mediaKey, "mediaKey");
-  fieldId(value.dedupKey, "dedupKey");
+  validateField("dedupKey", value.dedupKey, "dedupKey");
   for (const name of ["favorite", "companion"])
     requireThat(
       value[name] === null || typeof value[name] === "boolean",

@@ -22,7 +22,7 @@ def associations(record):
         check(isinstance(entry, dict))
         account_value(entry.get("account"))
         field("id", entry.get("mediaKey"))
-        field("id", entry.get("dedupKey"))
+        field("dedupKey", entry.get("dedupKey"))
         check(isinstance(entry.get("sha256"), str)
               and re.fullmatch(r"[a-f0-9]{64}", entry["sha256"]))
         result.add((entry["account"], entry["mediaKey"], entry["dedupKey"], entry["sha256"]))
@@ -59,7 +59,7 @@ class LocalGoogleMatches:
                   and target["namespace"] == "library-media")
             field("id", target["mediaKey"])
             if "dedupKey" in target:
-                field("id", target["dedupKey"])
+                field("dedupKey", target["dedupKey"])
             if "size" in target:
                 check(type(target["size"]) is int and target["size"] > 0)
             check(target["mediaKey"] not in seen)

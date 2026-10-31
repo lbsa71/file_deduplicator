@@ -1,9 +1,21 @@
 import json, subprocess, tempfile, unittest
 from pathlib import Path
 from photoflow_web.google_workers import WorkerStore
+from photoflow_web.google_contracts import media
 
 
 class JobTypesTests(unittest.TestCase):
+    def test_dedup_key_contract_is_distinct_from_media_key(self):
+        photo = {"namespace": "library-media", "mediaKey": "media-a",
+                 "dedupKey": "opaque-key:revision_1", "favorite": False,
+                 "trashTimestamp": None, "companion": None}
+        media(photo)
+        for invalid in ("", ":a", "a:", "a::b", "a/b", "a b", "a\n", "a.b", "a%3Ab", "a" * 257):
+            with self.assertRaises(ValueError):
+                media({**photo, "dedupKey": invalid})
+        with self.assertRaises(ValueError):
+            media({**photo, "mediaKey": "media:revision"})
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.now = 1000

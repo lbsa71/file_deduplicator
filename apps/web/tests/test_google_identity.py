@@ -46,6 +46,13 @@ class LocalGoogleMatchTests(unittest.TestCase):
             self.assertEqual(self.check("google-b")["state"], "unmapped")
             self.assertEqual(self.check(mediaKey="unknown")["state"], "unmapped")
 
+    def test_colon_dedup_association_survives_import_and_exact_local_matching(self):
+        photo = {**self.photo, "mediaKey": "media-b", "dedupKey": "opaque-key:revision_1"}
+        OriginalImporter(self.library, lambda url: (self.raw, "image/png")).import_one(
+            "alice", "google-a", "colon-job", photo, "https://lh3.googleusercontent.com/private")
+        self.assertEqual(self.check(mediaKey="media-b", dedupKey=photo["dedupKey"])["state"], "verified-local")
+        self.assertEqual(self.check(dedupKey=photo["dedupKey"])["state"], "remote-details-changed")
+
     def test_byte_changes_and_stale_sidecars_do_not_verify(self):
         self.path.write_bytes(b"x" * len(self.raw))
         self.assertEqual(self.check()["state"], "local-content-changed")
