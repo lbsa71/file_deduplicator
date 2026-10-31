@@ -8,6 +8,11 @@ mutations are not enabled.
 
 ## Intent and retention requirements
 
+[ADR 0007](0007-cleanup-before-publication.md) defines execution order: verified
+cleanup is the first remote mutation phase, followed by observed quota headroom
+and then new image publication. Inventory and preservation verification precede
+all mutations; trash success alone does not prove that storage was reclaimed.
+
 PhotoFlow owns the complete local archive. Google Photos retains favorites,
 explicitly curated album members, items not verified locally, and images whose
 Google metadata has not yet been imported. Locally favoriting an image or adding

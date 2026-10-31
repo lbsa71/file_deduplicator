@@ -11,6 +11,10 @@ not a claim that the full service is complete or an active autonomous work goal.
 The [production Google reconciliation gap assessment](packages/google-photos/docs/production-reconciliation-gap.md)
 records the latest Linux checks, deployed-versus-repository differences, real
 library coverage and the remaining end-to-end proof-of-concept milestones.
+Execution must follow [ADR 0007](apps/web/spec/adr/0007-cleanup-before-publication.md):
+after inventory and verification, process eligible Google cleanup first, verify
+available quota, then upload new local images. Persist quota waiting and resume
+without repeating writes; successful trash alone is not proof of available space.
 
 | Area | Current evidence / remaining work |
 | --- | --- |

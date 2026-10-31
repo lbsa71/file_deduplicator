@@ -25,6 +25,9 @@ numbers are acceptance targets to measure, not results already achieved.
 
 ## Architecture decisions
 
+- [ADR 0007: Cleanup before publication](adr/0007-cleanup-before-publication.md)
+  orders verified cloud cleanup before new uploads and requires observed quota headroom.
+
 - [ADR 0006: Account-authorized Google pilots](adr/0006-account-authorized-google-pilots.md)
   permits explicitly authorized personal-account pilots with exact targets and unchanged recovery guards.
 

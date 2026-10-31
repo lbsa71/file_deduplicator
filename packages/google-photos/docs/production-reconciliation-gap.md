@@ -61,6 +61,11 @@ media identifiers, URLs or content hashes are included.
 
 ## Blocking gaps
 
+Execution order is governed by ADR 0007: preflight and a frozen plan, verified
+cleanup of eligible existing cloud items, observed quota headroom, then new local
+publication. Successful trash does not imply reclaimed storage. A persistent
+quota-wait gate is required while automatic permanent deletion remains absent.
+
 | Area | What exists | What a production reconciliation PoC still needs |
 | --- | --- | --- |
 | Coherent production release | Local development endpoint/pairing, tested source, healthy older Ubuntu deployment | Publish a distinct extension release and matching server build/capability set; preserve pairing/journals. Verify download from Ubuntu's network, not just the Mac's network, then configure the exact authorized account for selected pilots. |
@@ -126,9 +131,11 @@ hashing budget and a maximum of 100 targets, which a run coordinator must respec
 4. **Bounded full-loop production proof.** Use selected controls for a favorite,
    curated-album member, cloud-only original, local-only publication, waiting or
    ambiguous metadata, duplicate occurrence and fully eligible cleanup candidate.
-   Review the frozen plan, execute one mutation at a time, verify outcomes and
-   untouched controls, demonstrate reversible trash/restore, interrupt/restart and
-   rerun to convergence. Retain unsupported/unknown cases with explicit reasons.
+   Review the frozen plan and execute eligible existing cleanup first, one mutation
+   at a time. Demonstrate trash/restore qualification separately from quota release;
+   refresh capacity before publication and persist waiting if it is insufficient.
+   Verify outcomes and untouched controls, interrupt/restart and rerun to
+   convergence. Retain unsupported/unknown cases with explicit reasons.
 5. **Expand coverage and volume.** Add larger/HEIC/companion handling and needed
    archival video support, measure a whole-account dry run and verify recovery and
    backup evidence before broadening mutation batches. Image uploading remains the
