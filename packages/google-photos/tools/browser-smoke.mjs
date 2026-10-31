@@ -90,6 +90,20 @@ try {
       `Capture did not reach ${count} entries before the deadline`,
     );
   }
+  // A tab-hosted popup needs an explicit synthetic active-tab context. The real
+  // popup uses the user's active Photos tab, not its own extension document.
+  await panel.evaluate((tabId) => {
+    const query = chrome.tabs.query.bind(chrome.tabs);
+    chrome.tabs.query = (options) =>
+      options.active ? Promise.resolve([{ id: tabId }]) : query(options);
+  }, tabId);
+  await panel.locator("#identity").click();
+  await panel.waitForFunction(() =>
+    document.querySelector("#status").textContent.includes("fixture-account"),
+  );
+  assert.deepEqual(JSON.parse(await panel.locator("#status").textContent()), {
+    account: ACCOUNT,
+  });
   assert.equal((await command("identity")).result.account, ACCOUNT);
   assert.equal((await command("start")).ok, true);
   await page.evaluate(async () => {
@@ -168,6 +182,25 @@ try {
   assert.equal(omitted.entries[0].response.bodyOmitted, true);
   assert.equal(typeof omitted.entries[0].response.captureError, "string");
   assert.equal(actualRequests, 6, "An omitted body must not trigger a replay");
+
+  // Exercise the actual popup handler with a stalled browser injection. This
+  // stays inside the synthetic profile and must not issue any photo request.
+  await worker.evaluate(() => {
+    chrome.scripting.executeScript = () => new Promise(() => {});
+  });
+  await panel.clock.install();
+  await panel.locator("#identity").click();
+  assert.equal(await panel.locator("#identity").isDisabled(), true);
+  await panel.clock.fastForward(10001);
+  await panel.waitForFunction(() =>
+    document.querySelector("#status").textContent.includes("timed out"),
+  );
+  assert.equal(await panel.locator("#identity").isDisabled(), false);
+  assert.equal(
+    actualRequests,
+    6,
+    "A stalled identity check must not issue or replay traffic",
+  );
   console.log(
     JSON.stringify({
       browser: "Chromium",
@@ -178,6 +211,8 @@ try {
       secretLeak: false,
       downloadVerified: true,
       oversizedCaptureComplete: omitted.complete,
+      connectionCheckUi: true,
+      connectionTimeoutVerified: true,
     }),
   );
 } finally {

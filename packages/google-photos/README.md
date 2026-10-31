@@ -79,6 +79,9 @@ and after reading, reject redirects/unapproved endpoints, bound responses and
 timeouts, and never retry a write. Authentication failures and schema changes
 trip the client circuit; create a new client only after resolving the cause.
 
+Await `pageRequest` in direct callers: identity/preflight results may return
+synchronously, while network reads are asynchronous.
+
 ## Capture an interaction
 
 ### Chrome or Edge extension
@@ -92,6 +95,13 @@ trip the client circuit; create a new client only after resolving the cause.
    DevTools simultaneously because it may detach the extension.
 4. Perform one operation on a disposable test image. Return to the extension,
    choose **Stop capture**, then **Download capture**.
+
+After rebuilding an already installed unpacked extension, use **Reload** on its
+Chrome/Edge extensions page. **Check connection** reads identity without sending
+photo requests and has a ten-second deadline. A stalled check reports an error
+instead of staying on "Working…". Other popup commands also have deadlines;
+none is automatically retried. A timeout does not cancel an operation already
+sent to the browser: check capture status before repeating a capture command.
 
 The extension never uploads/favorites/deletes anything. **Read inventory counts**
 is a separate explicit action that issues read requests; it does not produce a

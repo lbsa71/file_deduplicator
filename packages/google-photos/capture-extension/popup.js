@@ -1,12 +1,17 @@
+import { createCommandClient } from "./commands.js";
+
 const status = document.querySelector("#status");
-async function command(action) {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const response = await chrome.runtime.sendMessage({ action, tabId: tab?.id });
-  if (!response.ok) throw new Error(response.error);
-  return response.result;
+const command = createCommandClient({ chrome });
+const buttons = [...document.querySelectorAll("button")];
+let busy = false;
+function setBusy(value) {
+  busy = value;
+  for (const button of buttons) button.disabled = value;
 }
 for (const id of ["start", "stop", "export", "identity", "inventory"])
   document.getElementById(id).addEventListener("click", async () => {
+    if (busy) return;
+    setBusy(true);
     status.textContent =
       id === "inventory" ? "Reading Google Photos…" : "Working…";
     try {
@@ -27,9 +32,18 @@ for (const id of ["start", "stop", "export", "identity", "inventory"])
       } else status.textContent = JSON.stringify(result, null, 2);
     } catch (e) {
       status.textContent = e.message;
+    } finally {
+      setBusy(false);
     }
   });
-const result = await command("status");
-status.textContent = result.recording
-  ? `Recording (${result.count} requests). Return here to stop and download.`
-  : "Ready. Open a Google Photos tab before starting.";
+setBusy(true);
+try {
+  const result = await command("status");
+  status.textContent = result.recording
+    ? `Recording (${result.count} requests). Return here to stop and download.`
+    : "Ready. Open a Google Photos tab before starting.";
+} catch (e) {
+  status.textContent = e.message;
+} finally {
+  setBusy(false);
+}

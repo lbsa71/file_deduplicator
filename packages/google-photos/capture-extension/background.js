@@ -17,6 +17,7 @@ async function evaluate(id, fn, arg) {
   const results = await chrome.scripting.executeScript({
     target: { tabId: id },
     world: "MAIN",
+    injectImmediately: true,
     func: fn,
     args: [arg],
   });

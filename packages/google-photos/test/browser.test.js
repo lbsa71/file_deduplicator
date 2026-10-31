@@ -16,6 +16,26 @@ const request = {
   operation: "item",
   mode: "read",
 };
+
+test("identity inspection returns synchronously without waiting on a page Promise or sending traffic", () => {
+  const saved = {
+    location: globalThis.location,
+    WIZ_global_data: globalThis.WIZ_global_data,
+    fetch: globalThis.fetch,
+  };
+  try {
+    globalThis.location = new URL("https://photos.google.com/");
+    globalThis.WIZ_global_data = { ...session };
+    globalThis.fetch = () => {
+      throw new Error("Identity must not send traffic");
+    };
+    assert.deepEqual(pageRequest({ operation: "identity" }), {
+      account: ACCOUNT,
+    });
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
 test("browser transport binds origin and account and never exports session values", async () => {
   const saved = {
     location: globalThis.location,
