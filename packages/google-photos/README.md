@@ -96,6 +96,12 @@ synchronously, while network reads are asynchronous.
 4. Perform one operation on a disposable test image. Return to the extension,
    choose **Stop capture**, then **Download capture**.
 
+For a repository checkout, select **`dist/capture-extension/`**, including `dist`.
+The neighboring `capture-extension/` directory contains source templates and is
+not installable. Only the build output includes `manifest.json` and the `lib/`
+modules needed by the background worker. If an older source copy was installed,
+disable it and load the built directory; Reload keeps the original folder path.
+
 After rebuilding an already installed unpacked extension, use **Reload** on its
 Chrome/Edge extensions page. **Check connection** reads identity without sending
 photo requests and has a ten-second deadline. A stalled check reports an error

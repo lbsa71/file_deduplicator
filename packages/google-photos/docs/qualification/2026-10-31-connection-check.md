@@ -2,6 +2,9 @@
 
 Starting `origin/main`: `4783413d2317bc58d67c591b0f6a7b2dd6d83e52`.
 This continues the [2026-10-30 qualification report](2026-10-30-browser-session.md).
+The later [source-folder diagnosis](2026-10-31-source-installation.md) identifies
+why the installed copy could not respond; the observations below describe the
+earlier investigation before that folder mismatch was established.
 The operator explicitly approved installing the capture extension for reads only,
 installed the repository build manually, and reported that **Check connection**
 remained on "Working…". No live photo changes were authorized or attempted.

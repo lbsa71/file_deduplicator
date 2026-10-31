@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { envelope, item, album, ACCOUNT } from "../test/fixtures.js";
+import { assertSourceNotInstallable } from "./source-install-smoke.mjs";
+await assertSourceNotInstallable();
 const extension = fileURLToPath(
   new URL("../dist/capture-extension", import.meta.url),
 );
@@ -213,6 +215,7 @@ try {
       oversizedCaptureComplete: omitted.complete,
       connectionCheckUi: true,
       connectionTimeoutVerified: true,
+      sourceDirectoryRejected: true,
     }),
   );
 } finally {
