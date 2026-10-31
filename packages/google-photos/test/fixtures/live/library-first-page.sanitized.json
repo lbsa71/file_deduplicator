@@ -1,0 +1,55 @@
+[
+  [
+    [
+      "opaque-1",
+      [
+        "opaque-2",
+        1000,
+        1000,
+        null,
+        null,
+        null,
+        null,
+        null,
+        [null, null, 1],
+        [1000]
+      ],
+      1000,
+      "opaque-3",
+      1000,
+      1000,
+      null,
+      [
+        [1],
+        [2],
+        [3],
+        [4],
+        [8],
+        [21],
+        [14],
+        [15],
+        [17],
+        [19],
+        [22],
+        [28, false, true],
+        [29, false, true],
+        [1000, false, true],
+        [1000, false, true]
+      ],
+      2,
+      null,
+      null,
+      null,
+      null,
+      false,
+      1000,
+      {
+        "129168200": [[], [null, null, null, false]],
+        "146008172": [null, 1000],
+        "163238866": [false]
+      }
+    ]
+  ],
+  "opaque-1559",
+  "opaque-1560"
+]

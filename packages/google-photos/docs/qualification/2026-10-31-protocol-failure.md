@@ -1,5 +1,9 @@
 # Rejected read result diagnostics, 2026-10-31
 
+Follow-up: the returned-result diagnostic identified an exact
+[frame-length incompatibility](2026-10-31-framing-correction.md), now covered by a
+reduced live fixture and a focused decoder correction.
+
 Starting `origin/main`: `00829a60c32a3733f16524e3d2352fd43da205be`.
 Chrome 156.0.8078.74, Windows, account alias `personal-account-A`.
 

@@ -37,12 +37,26 @@ try {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: envelope(
-          rpc,
-          url.searchParams.get("probe") === "oversized"
-            ? ["x".repeat(1024 * 1024 + 1)]
-            : data,
-        ),
+        body: (() => {
+          const payload =
+            url.searchParams.get("probe") === "oversized"
+              ? ["x".repeat(1024 * 1024 + 1)]
+              : data;
+          const line = JSON.stringify([
+            [
+              "wrb.fr",
+              rpc,
+              JSON.stringify(payload),
+              null,
+              null,
+              null,
+              "generic",
+              "synthetic-é-😀",
+            ],
+          ]);
+          const trailer = JSON.stringify([["di", 1]]);
+          return `)]}'\n\n${line.length + 2}\n${line}\n${trailer.length + 2}\n${trailer}\n`;
+        })(),
       });
     }
     if (url.pathname === "/upload") {

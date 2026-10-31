@@ -268,10 +268,13 @@ successful unit test. See the repository's ADR 0003 for the application design.
 
 ## Upstream and references
 
-Protocol knowledge and sanitized fixture shapes derive from Google Photos Toolkit
+Protocol knowledge and upstream fixture shapes derive from Google Photos Toolkit
 3.3.0, commit `6db9ab355e4797327e4078cf87a2b6994d36cf73`; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). It is not a runtime dependency.
-No account data from this deployment is committed in fixtures.
+No private account values from this deployment are committed in fixtures.
+The reviewed [live framing fixture](test/fixtures/live/README.md) retains aliased
+protocol structure from a read failure; its provenance and semantic redactions
+are documented separately. See the [framing qualification report](docs/qualification/2026-10-31-framing-correction.md).
 
 - [Google Photos Toolkit](https://github.com/xob0t/Google-Photos-Toolkit)
 - [Official uploads](https://developers.google.com/photos/library/guides/upload-media)

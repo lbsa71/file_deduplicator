@@ -28,7 +28,10 @@ export function decodeEnvelope(body, expectedRpc) {
       line = lines[++i];
       requireThat(
         typeof line === "string" &&
-          [bytes(line), bytes(line) + 1].includes(length),
+          ([bytes(line), bytes(line) + 1].includes(length) ||
+            // Live Photos frames use UTF-16 code units plus two, including
+            // ASCII trailer frames. Preserve the existing byte-length forms.
+            length === line.length + 2),
         "Invalid RPC frame length",
       );
     }
