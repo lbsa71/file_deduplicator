@@ -13,7 +13,10 @@ and isolated accounts/libraries. Live mutation qualification defaults to disposa
 fixtures. An owner may explicitly authorize a finite, exact-target pilot on their
 backed-up personal account after accepting the risks; record that authorization
 and configure the account and selected-target policy explicitly. A backup alone
-never grants permission, and this exception does not enable unattended cleanup.
+never grants permission, and this exception does not enable unattended cleanup. A separate owner-authorized
+finite production Takeout sweep follows [ADR 0009](apps/web/spec/adr/0009-owner-approved-google-retention-sweep.md);
+its exact manifest, current local evidence, fresh protections and mutation journal
+are the production authority.
 
 From the repository root:
 

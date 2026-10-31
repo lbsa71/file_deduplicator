@@ -1,3 +1,4 @@
+import { RetentionTrash } from "./retention-trash.js";
 import { JOBS, photoKey } from "./jobs.js";
 import { ToolkitPilot } from "./toolkit-pilot.js";
 export function createGoogleJobHandlers({
@@ -20,6 +21,24 @@ export function createGoogleJobHandlers({
           JOBS[operation].effect === "write" ||
           operation === "reconcile-write"
         ) {
+          if (operation === "trash" && context.job.retentionScope)
+            return new RetentionTrash({
+              account,
+              reader,
+              journal,
+              write: writeFactory(account, context),
+              phase: context.phase,
+            }).execute(context.job);
+          if (operation === "reconcile-write") {
+            const record = await journal.get(input.originalJobId);
+            if (record?.plan?.targetPolicy === "takeout-retention")
+              return new RetentionTrash({
+                account,
+                reader,
+                journal,
+                phase: context.phase,
+              }).reconcile(input.originalJobId);
+          }
           const pilot = new ToolkitPilot({
             account,
             reader,

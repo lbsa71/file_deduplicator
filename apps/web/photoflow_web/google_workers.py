@@ -51,6 +51,7 @@ class WorkerStore:
         check(not (test_account and pilot_account) or test_account == pilot_account)
         self.pilot_account = pilot_account or test_account
         self.target_policy = target_policy
+        self.retention_check = lambda owner, account, scope: False
         self.original_receipt = original_receipt
         self.now = now
         directory = Path(directory) / "google-workers"
@@ -75,6 +76,7 @@ class WorkerStore:
                 ("version", "INTEGER NOT NULL DEFAULT 1"),
                 ("target_policy", "TEXT NOT NULL DEFAULT 'fixtures'"),
                 ("not_after", "REAL"),
+                ("retention_scope", "TEXT"),
             ]:
                 if name not in {
                     row[1] for row in db.execute("PRAGMA table_info(jobs)")
@@ -236,7 +238,15 @@ class WorkerStore:
             )
 
     def enqueue_once(
-        self, owner, request_key, operation, value, confirmed=False, *, not_after=None
+        self,
+        owner,
+        request_key,
+        operation,
+        value,
+        confirmed=False,
+        *,
+        not_after=None,
+        retention_scope=None,
     ):
         """A stable intent survives acknowledgements, restarts and manifest polling."""
         check(isinstance(request_key, str) and 0 < len(request_key) <= 160)
@@ -247,6 +257,39 @@ class WorkerStore:
         check(operation in JOB_SPECS)
         spec = JOB_SPECS[operation]
         spec["validate_input"](value)
+        if retention_scope is not None:
+            from .google_contracts import field
+
+            check(
+                operation == "trash"
+                and confirmed is True
+                and self.target_policy == "selected"
+            )
+            check(
+                isinstance(retention_scope, dict)
+                and set(retention_scope)
+                == {
+                    "purpose",
+                    "manifestId",
+                    "manifestSha256",
+                    "localSha256",
+                    "dedupKey",
+                    "photoKey",
+                }
+            )
+            check(retention_scope["purpose"] == "owner-authorized-takeout-retention")
+            check(
+                re.fullmatch(r"[a-f0-9]{32}", retention_scope["manifestId"]) is not None
+            )
+            for name in ("manifestSha256", "localSha256"):
+                check(re.fullmatch(r"[a-f0-9]{64}", retention_scope[name]) is not None)
+            field("dedupKey", retention_scope["dedupKey"])
+            check(retention_scope["photoKey"] == photo_key(value["photoUrl"]))
+        encoded_scope = (
+            json.dumps(retention_scope, sort_keys=True)
+            if retention_scope is not None
+            else None
+        )
         normalized = {
             **{k: None for k, v in spec["fields"].items() if v.endswith("?")},
             **value,
@@ -261,6 +304,7 @@ class WorkerStore:
                     previous["operation"] == operation
                     and json.loads(previous["input"]) == normalized
                     and previous["not_after"] == not_after
+                    and previous["retention_scope"] == encoded_scope
                 )
                 if (
                     spec["effect"] == "read"
@@ -285,7 +329,8 @@ class WorkerStore:
             )
             check(not_after is None or not_after > self.now())
             db.execute(
-                "UPDATE jobs SET not_after=? WHERE id=?", (not_after, result["id"])
+                "UPDATE jobs SET not_after=?,retention_scope=? WHERE id=?",
+                (not_after, encoded_scope, result["id"]),
             )
             db.execute(
                 "INSERT INTO job_requests VALUES(?,?,?)",
@@ -362,6 +407,24 @@ class WorkerStore:
                             (row["id"],),
                         )
                         continue
+                if row["retention_scope"]:
+                    try:
+                        ready = (
+                            self.retention_check(
+                                row["owner"],
+                                row["account"],
+                                json.loads(row["retention_scope"]),
+                            )
+                            is True
+                        )
+                    except (OSError, ValueError, KeyError, TypeError):
+                        ready = False
+                    if not ready:
+                        db.execute(
+                            "UPDATE jobs SET state='blocked',error='LOCAL_EVIDENCE_CHANGED' WHERE id=?",
+                            (row["id"],),
+                        )
+                        continue
                 lease = secrets.token_hex(16)
                 db.execute(
                     "UPDATE jobs SET state='running',lease=?,started=?,attempt=attempt+1 WHERE id=?",
@@ -400,6 +463,19 @@ class WorkerStore:
                             else None
                         ),
                         "albumId": value.get("albumId"),
+                    }
+                if row["retention_scope"]:
+                    check(
+                        row["operation"] == "trash"
+                        and row["target_policy"] == "selected"
+                    )
+                    result["retentionScope"] = {
+                        **json.loads(row["retention_scope"]),
+                        **{
+                            k: v
+                            for k, v in result.pop("testScope").items()
+                            if k not in ("testOnly", "targetPolicy", "photoKey")
+                        },
                     }
                 return result
         return None
@@ -538,7 +614,9 @@ class WorkerStore:
                     (
                         "unknown"
                         if error == "UNKNOWN_OUTCOME"
-                        else "failed" if error else "succeeded"
+                        else "failed"
+                        if error
+                        else "succeeded"
                     ),
                     json.dumps(result) if result else None,
                     error,
@@ -632,7 +710,9 @@ class WorkerStore:
                     else (
                         "connected"
                         if w["ready"]
-                        else "checking" if running else "needs_login"
+                        else "checking"
+                        if running
+                        else "needs_login"
                     )
                 )
             ),

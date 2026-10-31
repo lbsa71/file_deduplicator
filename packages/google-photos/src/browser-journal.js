@@ -26,6 +26,7 @@ export class BrowserJournal {
     this.storage = storage;
     this.digest = digest;
     this.busy = new Set();
+    this.pendingCache = new Map();
   }
   key(id) {
     return "pilot-record:" + id;
@@ -85,7 +86,9 @@ export class BrowserJournal {
     );
     JOBS[record.plan.operation].validateInput(record.plan.input);
     requireThat(
-      ["fixtures", "selected"].includes(record.plan.targetPolicy ?? "fixtures"),
+      ["fixtures", "selected", "takeout-retention"].includes(
+        record.plan.targetPolicy ?? "fixtures",
+      ),
       "Invalid journal target policy",
       "STORAGE",
     );
@@ -112,6 +115,11 @@ export class BrowserJournal {
       };
     await this.decode(key, wrapped);
     await this.storage.set({ [key]: wrapped });
+    const pending = this.pendingCache.get(record.plan.account);
+    if (pending) {
+      if (record.state === "verified") pending.delete(record.plan.id);
+      else pending.set(record.plan.id, structuredClone(record));
+    }
   }
   async records(account) {
     const all = await this.storage.get(null),
@@ -124,7 +132,18 @@ export class BrowserJournal {
     return records;
   }
   async pending(account) {
-    return (await this.records(account)).filter((r) => r.state !== "verified");
+    if (!this.pendingCache.has(account))
+      this.pendingCache.set(
+        account,
+        new Map(
+          (await this.records(account))
+            .filter((r) => r.state !== "verified")
+            .map((r) => [r.plan.id, r]),
+        ),
+      );
+    return Array.from(this.pendingCache.get(account).values(), (r) =>
+      structuredClone(r),
+    );
   }
   async fixture(account, mediaKey) {
     return (

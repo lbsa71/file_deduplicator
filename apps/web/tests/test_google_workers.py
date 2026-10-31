@@ -348,3 +348,81 @@ class ManifestReadRepairTests(unittest.TestCase):
                 )["state"],
                 "failed",
             )
+
+
+class TakeoutAuthorityTests(unittest.TestCase):
+    def test_takeout_scope_is_distinct_target_bound_and_stable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = WorkerStore(
+                directory, pilot_account="a", target_policy="selected", now=lambda: 1000
+            )
+            worker = store.pair(store.pairing("alice", "a")["code"], "a")
+            scope = {
+                "purpose": "owner-authorized-takeout-retention",
+                "manifestId": "b" * 32,
+                "manifestSha256": "c" * 64,
+                "localSha256": "d" * 64,
+                "dedupKey": "dedup-a",
+                "photoKey": "media-a",
+            }
+            job = store.enqueue_once(
+                "alice",
+                "sweep:1",
+                "trash",
+                {"photoUrl": "https://photos.google.com/photo/media-a"},
+                True,
+                not_after=2000,
+                retention_scope=scope,
+            )
+            store.retention_check = lambda owner, account, scope: True
+            claimed = store.claim(worker["worker_id"])
+            self.assertNotIn("testScope", claimed)
+            self.assertEqual(claimed["retentionScope"]["photoKey"], "media-a")
+            self.assertEqual(claimed["retentionScope"]["jobId"], job["id"])
+            with self.assertRaises(ValueError):
+                store.enqueue_once(
+                    "alice",
+                    "sweep:1",
+                    "trash",
+                    {"photoUrl": "https://photos.google.com/photo/media-a"},
+                    True,
+                    not_after=2000,
+                    retention_scope={**scope, "localSha256": "e" * 64},
+                )
+            with self.assertRaises(ValueError):
+                store.enqueue_once(
+                    "alice",
+                    "sweep:2",
+                    "trash",
+                    {"photoUrl": "https://photos.google.com/photo/other"},
+                    True,
+                    retention_scope=scope,
+                )
+
+    def test_missing_current_local_authority_blocks_dispatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = WorkerStore(
+                directory, pilot_account="a", target_policy="selected", now=lambda: 1000
+            )
+            worker = store.pair(store.pairing("alice", "a")["code"], "a")
+            scope = {
+                "purpose": "owner-authorized-takeout-retention",
+                "manifestId": "b" * 32,
+                "manifestSha256": "c" * 64,
+                "localSha256": "d" * 64,
+                "dedupKey": "dedup-a",
+                "photoKey": "media-a",
+            }
+            job = store.enqueue_once(
+                "alice",
+                "sweep:1",
+                "trash",
+                {"photoUrl": "https://photos.google.com/photo/media-a"},
+                True,
+                not_after=2000,
+                retention_scope=scope,
+            )
+            self.assertIsNone(store.claim(worker["worker_id"]))
+            self.assertEqual(
+                store.diagnostic("alice", job["id"])["job"]["state"], "blocked"
+            )

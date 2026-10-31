@@ -119,8 +119,15 @@ export function GoogleReconciliation({ call, account, targetPolicy }) {
             {job.action}: {job.state}
             {job.waiting_reason ? " — " + job.waiting_reason : ""}
             {job.progress?.stage ? " — " + job.progress.stage : ""}
+            {job.progress?.total != null
+              ? ` (${job.progress.completed || 0}/${job.progress.total})`
+              : ""}
             {job.error && <p role="alert">{job.error}</p>}
-            {["google.commit", "google.prepare"].includes(job.action) &&
+            {[
+              "google.commit",
+              "google.prepare",
+              "google.prepare-takeout",
+            ].includes(job.action) &&
               ["failed", "partial"].includes(job.state) &&
               !job.result?.deferred?.length && (
                 <button
@@ -135,26 +142,31 @@ export function GoogleReconciliation({ call, account, targetPolicy }) {
                     })
                   }
                 >
-                  {job.action === "google.prepare" ? "Resume read-only preparation" : "Resume interrupted commit"}
+                  {job.action !== "google.commit"
+                    ? "Resume read-only preparation"
+                    : "Resume interrupted commit"}
                 </button>
               )}
-            {job.result?.manifestId && job.action === "google.prepare" && (
-              <button
-                disabled={busy}
-                onClick={() =>
-                  act(async () => {
-                    setManifest(
-                      await api.current(
-                        base + "/manifests/" + job.result.manifestId,
-                      ),
-                    );
-                    setReviewed(false);
-                  })
-                }
-              >
-                Inspect prepared manifest
-              </button>
-            )}
+            {job.result?.manifestId &&
+              ["google.prepare", "google.prepare-takeout"].includes(
+                job.action,
+              ) && (
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    act(async () => {
+                      setManifest(
+                        await api.current(
+                          base + "/manifests/" + job.result.manifestId,
+                        ),
+                      );
+                      setReviewed(false);
+                    })
+                  }
+                >
+                  Inspect prepared manifest
+                </button>
+              )}
             {job.action === "google.commit" && job.result && (
               <p>
                 Completed: {job.result.completed?.length || 0}; deferred:{" "}
@@ -181,6 +193,23 @@ export function GoogleReconciliation({ call, account, targetPolicy }) {
           </p>
           <pre>{JSON.stringify(manifest.counts.actions, null, 2)}</pre>
           <p>{manifest.limitations.join(" ")}</p>
+          {manifest.inventoryScope === "account" &&
+            !manifest.capabilities.productionRetention && (
+              <button
+                disabled={busy}
+                onClick={() =>
+                  act(async () => {
+                    await api.current(
+                      base + "/manifests/" + manifest.id + "/takeout-sweep",
+                      "POST",
+                      {},
+                    );
+                  })
+                }
+              >
+                Prepare Takeout Trash sweep
+              </button>
+            )}
           <button onClick={download}>Download full private manifest</button>
           {manifest.retentionPolicy && (
             <p>

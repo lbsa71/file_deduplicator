@@ -64,6 +64,25 @@ with tempfile.TemporaryDirectory(prefix="photoflow-google-worker-") as temporary
     def original_info():
         return {"size": len(original)}
     app.router.routes.insert(0, app.router.routes.pop())
+    @app.post("/fixture-takeout")
+    def takeout_original():
+        from photoflow.model import Record
+        from photoflow_web.core import atomic, digest
+        library = app.state.library
+        record = Record.create("takeout-a", "worker-fixture", "inbox/takeout.jpg").data
+        document = {"url": "https://photos.google.com/photo/media-a", "title": name}
+        raw = json.dumps(document).encode()
+        path = library.root / "inbox"
+        path.mkdir(exist_ok=True)
+        (path / "takeout.jpg").write_bytes(original)
+        (path / "takeout.json").write_bytes(raw)
+        record["file"].update(sha256=digest(original), size_bytes=len(original))
+        record["sources"][0].update(original_filename=name, documents=[{"document": document, "relative_path": "inbox/takeout.json", "sha256": digest(raw)}])
+        sidecar = path / "takeout.jpg.photo.json"
+        atomic(sidecar, record)
+        library.put_index(record, sidecar)
+        return {"ok": True}
+    app.router.routes.insert(0, app.router.routes.pop())
     port = int(os.environ.get("PHOTOFLOW_WORKER_FIXTURE_PORT", "8100"))
     print(json.dumps({"url": f"https://127.0.0.1:{port}"}), flush=True)
     uvicorn.run(

@@ -66,7 +66,10 @@ class Reconciliation:
         )
         self.jobs = JobStore(self.directory, library.id, clock=now)
         with self.jobs.db() as db:
-            db.execute("CREATE TABLE IF NOT EXISTS worker_requests(job TEXT,name TEXT,attempt INTEGER,request_key TEXT NOT NULL,PRIMARY KEY(job,name,attempt))")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS worker_requests(job TEXT,name TEXT,attempt INTEGER,request_key TEXT NOT NULL,PRIMARY KEY(job,name,attempt))"
+            )
+        self.remote.retention_check = self.retention_check
         self.runner = JobCoordinator(
             self.jobs,
             self.execute,
@@ -117,6 +120,69 @@ class Reconciliation:
             owner,
             "google.prepare",
             {"account": self.account(owner), "options": value},
+            private=True,
+        )
+
+    def retention_check(self, owner, account, scope):
+        from .google_takeout import PURPOSE, verify_copy
+
+        value = self.manifest(owner, scope["manifestId"])
+        require(
+            value["sha256"] == scope["manifestSha256"]
+            and value["account"] == account
+            and value["libraryId"] == self.library.id,
+            "Retention manifest identity changed",
+        )
+        require(
+            value["capabilities"]["productionRetention"] is True
+            and self.now() < value["expiresAt"]
+            and self.authorize(owner)
+            and self.library.available(),
+            "Retention authority expired or revoked",
+        )
+        matches = [
+            op
+            for op in value["operations"]
+            if op.get("expect", {}).get("mediaKey") == scope["photoKey"]
+        ]
+        require(len(matches) == 1, "Retention target must be unique")
+        op = matches[0]
+        require(
+            op["authority"] == PURPOSE
+            and op["operation"] == "trash"
+            and op["expect"]["dedupKey"] == scope["dedupKey"]
+            and op["localEvidence"]["sha256"] == scope["localSha256"],
+            "Retention evidence changed",
+        )
+        verify_copy(self.library, op["localEvidence"], scope["photoKey"])
+        return True
+
+    def prepare_takeout(self, owner, ident):
+        require(self.authorize(owner), "Administrator authority required")
+        source = self.manifest(owner, ident)
+        require(
+            source["inventoryScope"] == "account"
+            and source["inventoryComplete"] is True,
+            "Complete account inventory required",
+        )
+        require(
+            not source["capabilities"]["productionRetention"],
+            "Select the source inventory",
+        )
+        require(source["account"] == self.account(owner), "Google account changed")
+        require(
+            self.remote.status(owner).get("pilotTargetPolicy") == "selected",
+            "Owner account authorization required",
+        )
+        return self.runner.enqueue(
+            owner,
+            "google.prepare-takeout",
+            {
+                "account": source["account"],
+                "sourceManifestId": ident,
+                "sourceSha256": source["sha256"],
+            },
+            key="takeout:" + ident,
             private=True,
         )
 
@@ -196,7 +262,7 @@ class Reconciliation:
         job = self.jobs.get(ident)
         if job["owner"] != owner:
             raise KeyError(ident)
-        if job["action"] == "google.prepare":
+        if job["action"] in ("google.prepare", "google.prepare-takeout"):
             if self.account(owner) != job["params"]["account"]:
                 raise Conflict("Google account changed; prepare again")
             if self.now() > job["created"] + 86400:
@@ -204,7 +270,9 @@ class Reconciliation:
             if not self.library.available():
                 raise OSError("Library storage is unavailable")
         else:
-            require(job["action"] == "google.commit", "Unsupported reconciliation command")
+            require(
+                job["action"] == "google.commit", "Unsupported reconciliation command"
+            )
             if (job.get("result") or {}).get("deferred"):
                 raise Conflict("Deferred uploads belong to a new preparation run")
             manifest = self.manifest(owner, job["params"]["manifestId"])
@@ -214,20 +282,36 @@ class Reconciliation:
             self.runner.wake()
         return value
 
-    def _remote(self, job, context, name, operation, value, confirmed=False):
+    def _remote(
+        self,
+        job,
+        context,
+        name,
+        operation,
+        value,
+        confirmed=False,
+        retention_scope=None,
+    ):
         def work():
             if self.account(job["owner"]) != job["params"]["account"]:
                 raise Conflict("Google account changed")
-            context.checkpoint(stage=name)
+            if not retention_scope:
+                context.checkpoint(stage=name)
             key = job["id"] + ":" + digest(name.encode())[:32]
             # Explicit read-only preparation retries keep completed steps and
             # failed worker receipts. Commit intents keep their original key.
             if job["action"] == "google.prepare":
-                require(JOB_SPECS[operation]["effect"] == "read", "Preparation must remain read-only")
+                require(
+                    JOB_SPECS[operation]["effect"] == "read",
+                    "Preparation must remain read-only",
+                )
                 if job["attempt"] > 1:
                     key += ":read-retry:" + str(job["attempt"])
             with self.jobs.db() as db:
-                db.execute("INSERT OR REPLACE INTO worker_requests VALUES(?,?,?,?)", (job["id"], name, job["attempt"], key))
+                db.execute(
+                    "INSERT OR REPLACE INTO worker_requests VALUES(?,?,?,?)",
+                    (job["id"], name, job["attempt"], key),
+                )
             state = self.remote.enqueue_once(
                 job["owner"],
                 key,
@@ -235,10 +319,13 @@ class Reconciliation:
                 value,
                 confirmed,
                 not_after=job["params"].get("expiresAt", job["created"] + 86400),
+                **({"retention_scope": retention_scope} if retention_scope else {}),
             )
             self.wake()
             if state["state"] in ("queued", "running"):
-                raise Deferred("waiting_for_google_worker", retry_after=5)
+                raise Deferred(
+                    "waiting_for_google_worker", retry_after=1 if retention_scope else 5
+                )
             if state["state"] == "unknown":
                 raise ReconciliationRequired(
                     "Google outcome is unknown; reconcile the original job before proceeding"
@@ -342,6 +429,10 @@ class Reconciliation:
         return result
 
     def execute(self, job, context):
+        if job["action"] == "google.prepare-takeout":
+            from .google_takeout import prepare_sweep
+
+            return prepare_sweep(self, job, context)
         if job["action"] == "google.prepare":
             return self._prepare(job, context)
         if job["action"] == "google.commit":
@@ -586,7 +677,10 @@ class Reconciliation:
                 {
                     "step": row["name"],
                     "workerRequestKey": (
-                        db.execute("SELECT request_key FROM worker_requests WHERE job=? AND name=? ORDER BY attempt DESC LIMIT 1", (job["id"], row["name"])).fetchone()
+                        db.execute(
+                            "SELECT request_key FROM worker_requests WHERE job=? AND name=? ORDER BY attempt DESC LIMIT 1",
+                            (job["id"], row["name"]),
+                        ).fetchone()
                         or [job["id"] + ":" + digest(row["name"].encode())[:32]]
                     )[0],
                     "resultSha256": digest(canonical(json.loads(row["result"]))),
@@ -670,8 +764,57 @@ class Reconciliation:
         completed = []
         deferred = []
         capacity = None
+        with self.jobs.db() as db:
+            done = {
+                r["name"]: json.loads(r["result"])
+                for r in db.execute(
+                    "SELECT name,result FROM steps WHERE job=? AND state='done'",
+                    (job["id"],),
+                )
+            }
         for operation in manifest["operations"]:
             name = "commit:" + str(operation["seq"]) + ":" + operation["operation"]
+            if (
+                name in done
+                and operation.get("authority") == "owner-authorized-takeout-retention"
+            ):
+                completed.append(
+                    {
+                        "seq": operation["seq"],
+                        "operation": operation["operation"],
+                        "outcome": done[name].get("outcome"),
+                    }
+                )
+                if operation["operation"] == "storage-quota":
+                    capacity = done[name]
+                continue
+            context.checkpoint(
+                stage=name, completed=len(completed), total=len(manifest["operations"])
+            )
+            retention_scope = None
+            if operation.get("authority") == "owner-authorized-takeout-retention":
+                from .google_takeout import verify_copy
+
+                require(
+                    manifest["capabilities"]["productionRetention"] is True
+                    and operation["operation"] == "trash",
+                    "Production Trash authority required",
+                )
+                context.step(
+                    "local:" + name,
+                    lambda op=operation: verify_copy(
+                        self.library, op["localEvidence"], op["expect"]["mediaKey"]
+                    ),
+                    replay_safe=True,
+                )
+                retention_scope = {
+                    "purpose": operation["authority"],
+                    "manifestId": manifest["id"],
+                    "manifestSha256": manifest["sha256"],
+                    "photoKey": operation["expect"]["mediaKey"],
+                    "dedupKey": operation["expect"]["dedupKey"],
+                    "localSha256": operation["localEvidence"]["sha256"],
+                }
             if operation["operation"] == "upload-image":
                 size = operation["input"]["size"]
                 reserve = manifest["options"]["reserveBytes"]
@@ -713,6 +856,7 @@ class Reconciliation:
                     operation["operation"],
                     operation["input"],
                     operation["operation"] == "trash",
+                    retention_scope=retention_scope,
                 )
                 if operation["operation"] == "photo-details" and operation.get(
                     "expect"
@@ -729,7 +873,11 @@ class Reconciliation:
                 if operation["operation"] == "storage-quota":
                     capacity = result
             completed.append(
-                {"seq": operation["seq"], "operation": operation["operation"]}
+                {
+                    "seq": operation["seq"],
+                    "operation": operation["operation"],
+                    "outcome": result.get("outcome"),
+                }
             )
         result = {
             "manifestId": manifest["id"],
@@ -785,6 +933,14 @@ def install_reconciliation_routes(app, library, remote, session, authorize, wake
         owner = session(req, 3, True)["username"]
         return JSONResponse(
             service.resume(owner, ident),
+            status_code=202,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post(base + "/manifests/{ident}/takeout-sweep")
+    def takeout_sweep(ident: str, req: Request):
+        return JSONResponse(
+            service.prepare_takeout(session(req, 3, True)["username"], ident),
             status_code=202,
             headers={"Cache-Control": "no-store"},
         )

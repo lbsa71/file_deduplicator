@@ -426,6 +426,98 @@ try {
     fixture.state.writes.length,
     beforePrepare + (targetPolicy === "selected" ? 1 : 0),
   );
+  if (targetPolicy === "selected") {
+    fixture.state.trashed = false;
+    assert.ok((await context.request.post(endpoint + "/fixture-takeout")).ok());
+    await ui
+      .getByText(
+        "I confirm the selected photos are non-vital and authorize a Trash pilot.",
+        { exact: true },
+      )
+      .click();
+    await ui.getByLabel("Reconciliation photo URLs", { exact: true }).fill("");
+    await ui
+      .getByRole("button", { name: "Prepare dry-run manifest", exact: true })
+      .click();
+    await ui
+      .locator(".google-reconciliation li")
+      .filter({ hasText: "google.prepare: succeeded" })
+      .nth(1)
+      .waitFor({ timeout: 90000 });
+    // Read the synthetic server state to distinguish the new completed command.
+    await ui.waitForFunction(
+      async () => {
+        const j = await (await fetch("/api/v1/google/reconciliation")).json();
+        return (
+          j.items[0]?.action === "google.prepare" &&
+          j.items[0]?.state === "succeeded"
+        );
+      },
+      null,
+      { timeout: 90000 },
+    );
+    await ui
+      .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+      .first()
+      .click();
+    await preview
+      .getByRole("button", { name: "Prepare Takeout Trash sweep", exact: true })
+      .click();
+    await ui.waitForFunction(
+      async () => {
+        const j = await (await fetch("/api/v1/google/reconciliation")).json();
+        return (
+          j.items[0]?.action === "google.prepare-takeout" &&
+          j.items[0]?.state === "succeeded"
+        );
+      },
+      null,
+      { timeout: 90000 },
+    );
+    await ui
+      .locator(".google-reconciliation li")
+      .filter({ hasText: "google.prepare-takeout: succeeded" })
+      .waitFor({ timeout: 90000 });
+    await ui
+      .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+      .first()
+      .click();
+    await preview
+      .locator("pre")
+      .filter({ hasText: '"takeout-trash"' })
+      .waitFor({ timeout: 30000 });
+    assert.match(await preview.textContent(), /takeout-trash/);
+    const sweepId = (await preview.locator("p").first().textContent()).match(
+      /Manifest ([a-f0-9]{32})/,
+    )[1];
+    await preview
+      .getByText(
+        "I reviewed this manifest and authorize its listed executable operations.",
+        { exact: true },
+      )
+      .click();
+    await preview
+      .getByRole("button", { name: "Commit reviewed manifest", exact: true })
+      .click();
+    let sweepCommit;
+    for (let n = 0; n < 300; n++) {
+      const response = await context.request.get(
+        endpoint + "/api/v1/google/reconciliation",
+      );
+      sweepCommit = (await response.json()).items.find(
+        (x) => x.action === "google.commit" && x.params.manifestId === sweepId,
+      );
+      if (
+        sweepCommit &&
+        ["succeeded", "partial", "failed"].includes(sweepCommit.state)
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    assert.equal(sweepCommit?.state, "succeeded", JSON.stringify(sweepCommit));
+    assert.equal(fixture.state.trashed, true);
+    assert.equal(fixture.state.writes.length, beforePrepare + 2);
+  }
   const completedJobs = await ui.locator(".google-panel ol>li").count();
   console.log(
     JSON.stringify({
@@ -446,6 +538,7 @@ try {
       googleRequests: fixture.calls,
       phases: true,
       sanitizedDiagnostics: true,
+      productionTakeoutSweep: targetPolicy === "selected",
       realGoogleTraffic: false,
     }),
   );

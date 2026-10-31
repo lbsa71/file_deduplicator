@@ -50,11 +50,26 @@ export function pageRequest(request) {
     "location-clear": "EtUHOe",
   };
   if (request.mode === "write") {
-    const scope = request.testScope;
+    const scope = request.retentionScope ?? request.testScope;
+    const retention =
+      request.retentionScope &&
+      scope.purpose === "owner-authorized-takeout-retention" &&
+      request.operation === "trash" &&
+      request.rpc === "XwAOJf" &&
+      /^[a-f0-9]{32}$/.test(scope.manifestId) &&
+      /^[a-f0-9]{64}$/.test(scope.manifestSha256) &&
+      /^[a-f0-9]{64}$/.test(scope.localSha256) &&
+      typeof scope.dedupKey === "string" &&
+      scope.dedupKey.length > 0 &&
+      JSON.stringify(request.data) ===
+        JSON.stringify([null, 1, [scope.dedupKey], 3]);
     const checks = [
       [
-        scope?.testOnly === true &&
-          ["fixtures", "selected"].includes(scope?.targetPolicy ?? "fixtures"),
+        retention ||
+          (scope?.testOnly === true &&
+            ["fixtures", "selected"].includes(
+              scope?.targetPolicy ?? "fixtures",
+            )),
         "TEST_MODE",
       ],
       [scope?.account === request.account, "ACCOUNT"],

@@ -281,3 +281,48 @@ test("serialized page requests preserve explicit null target bindings across Chr
     Object.assign(globalThis, saved);
   }
 });
+
+test("production retention page capability permits only exact Trash payload", async () => {
+  const saved = {
+    location: globalThis.location,
+    WIZ_global_data: globalThis.WIZ_global_data,
+    fetch: globalThis.fetch,
+  };
+  try {
+    globalThis.location = new URL("https://photos.google.com/");
+    globalThis.WIZ_global_data = { ...session };
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response(envelope("XwAOJf", [true]));
+    };
+    const r = {
+      account: ACCOUNT,
+      operation: "trash",
+      rpc: "XwAOJf",
+      mode: "write",
+      data: [null, 1, ["dedup-a"], 3],
+      targetMediaKey: "media-a",
+      targetAlbumId: null,
+      retentionScope: {
+        purpose: "owner-authorized-takeout-retention",
+        account: ACCOUNT,
+        jobId: "sweep-a",
+        operation: "trash",
+        photoKey: "media-a",
+        albumId: null,
+        dedupKey: "dedup-a",
+        manifestId: "a".repeat(32),
+        manifestSha256: "b".repeat(64),
+        localSha256: "c".repeat(64),
+        expiresAt: Date.now() + 60000,
+      },
+    };
+    assert.equal((await pageRequest(r)).status, 200);
+    r.data = [null, 1, ["other"], 3];
+    assert.equal((await pageRequest(r)).error, "UNQUALIFIED");
+    assert.equal(calls, 1);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});

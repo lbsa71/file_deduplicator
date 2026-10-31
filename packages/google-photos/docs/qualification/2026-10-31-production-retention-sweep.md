@@ -135,15 +135,33 @@ The private audit explicitly says `remoteBytesCompared: false` and
 byte equality, companion completeness, ownership or production execution authority.
 The failed optional download batch has not upgraded any retention fact.
 
-## Next gates
+## Owner-authorized executable sweep
 
-1. Build the reviewed Takeout-based cleanup path from the audited local evidence,
-   fresh Google protection/identity checks, companion checks and an authority
-   path distinct from disposable qualification pilots. Preserve all unknown holds.
-2. Review a finite manifest and qualify a bounded production batch before the
-   broader sweep. No automatic full-account Trash is enabled by this revision.
+The owner subsequently instructed that the policy be changed and the actual
+Trash sweep run. ADR 0009 now accepts current local SHA-256 plus preserved exact
+Takeout URL/title provenance as the local-original evidence. It does not require
+fresh Google downloads or independent backup verification. Items without positive
+motion markers are eligible under this explicit policy; missing markers are not
+reported as verified companion absence. The 649 positive motion items and the
+ambiguous local match remain retained.
 
-The image publisher is outside this cleanup-only scope. Unknown ownership,
-companions, metadata, local bytes or remote membership remain holds. No permanent
-deletion or production sweep has been executed. Real account values, identifiers,
-private manifests and diagnostic artifacts remain outside Git.
+The implementation derives a separate immutable executable manifest from the
+completed account inventory. It issues exact account/target/local-hash/manifest
+capabilities distinct from disposable pilot scopes. Current local evidence is
+reverified at browser dispatch; fresh star and album state is checked by the
+extension before each write. Newly protected photos receive kept receipts. A
+single write is journaled before sending and positive exact Trash membership is
+required before continuing. Unknown outcomes stop the plan; read-only recovery
+can resolve positive Trash evidence without replaying the write. There is no
+permanent-delete capability, upload or automatic download in this scope.
+
+The implementation is covered by local-evidence, authority-binding, protection,
+identity, unknown-outcome, reconciliation and durable-history regression tests.
+Real execution receipts and private target lists remain outside Git. Production
+execution results will be recorded separately after deployment.
+
+Validation for the executable path: 153 backend tests, 156 package tests and 24 UI
+unit tests pass. The selected-account synthetic HTTPS/WSS extension test completed
+40 jobs and 151 fixture Google requests, including full inventory, preserved
+Takeout preparation, hash-bound commit and verified production-scope Trash. It
+made no real Google requests. Contract synchronization and production builds pass.
