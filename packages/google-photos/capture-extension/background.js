@@ -1,6 +1,7 @@
 import { PassiveRecorder, sanitizeReadEvidence } from "./lib/capture.js";
 import { GooglePhotosClient } from "./lib/client.js";
 import { pageRequest, createPageTransport } from "./lib/browser.js";
+import { inspectSelection } from "./lib/inspection.js";
 import { sanitizeReadDiagnostic } from "./diagnostics.js";
 let tabId = null,
   recorder = null,
@@ -139,6 +140,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return await evaluate(message.tabId, pageRequest, {
           operation: "identity",
         });
+      case "inspect": {
+        if (busy) throw new Error("Inspection already active");
+        busy = true;
+        try {
+          await chrome.storage.session.remove("readInspection");
+          const identity = await evaluate(message.tabId, pageRequest, {
+            operation: "identity",
+          });
+          if (
+            !identity?.account ||
+            identity.account !== message.selection?.account
+          ) {
+            const error = new Error("Account mismatch");
+            error.diagnostic = { code: "ACCOUNT" };
+            throw error;
+          }
+          const result = await inspectSelection(
+            message.selection,
+            createPageTransport({
+              evaluate: (fn, arg) => evaluate(message.tabId, fn, arg),
+            }),
+          );
+          await chrome.storage.session.set({ readInspection: result.evidence });
+          report = result.summary;
+          if (!result.summary.complete) {
+            const error = new Error("Inspection stopped");
+            error.diagnostic = result.diagnostic;
+            throw error;
+          }
+          return result.summary;
+        } finally {
+          busy = false;
+        }
+      }
       case "inventory": {
         if (busy) throw new Error("Inspection already active");
         busy = true;

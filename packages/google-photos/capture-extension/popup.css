@@ -54,3 +54,13 @@ hr {
   border-top: 1px solid #ccd2d8;
   margin: 18px 0;
 }
+
+label {
+  display: block;
+  margin-top: 0.5rem;
+}
+input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}

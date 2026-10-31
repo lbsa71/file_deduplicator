@@ -172,3 +172,22 @@ Account/device behavior must be part of deployment qualification. Official API
 capabilities and use constraints are separately described in
 [API changes](https://developers.google.com/photos/support/updates) and
 [API policy](https://developers.google.com/photos/support/api-policy).
+
+## Desktop worker transport and scope clarification — 2026-10-31
+
+The agreed next application architecture uses a paired desktop extension opening
+an outbound authenticated WSS connection to PhotoFlow. Ubuntu persists jobs and
+policy decisions; the extension executes allowlisted operations in its signed-in
+Google Photos tab and returns results. Google credentials stay on the desktop.
+Media bytes use authenticated HTTPS transfers. Reconnection must reconcile any
+write whose outcome is unknown before permitting another attempt. This worker
+transport is planned, not implemented by the capture extension.
+
+Takeout creation/download automation is out of scope; imports remain manual.
+Cloud uploading is restricted to images, with no video upload requirement.
+Preserved Takeout `sources[].documents[].document.url` is the primary remote
+reference for existing imports, subject to account/identity verification. Newly
+uploaded images retain remote identity in receipts. Content matching remains a
+fallback for missing or ambiguous references, rather than the default for all
+Takeout records. Local videos and required companion preservation remain relevant
+to archival safety even though video uploading is out of scope.

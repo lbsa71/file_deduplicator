@@ -279,3 +279,31 @@ are documented separately. See the [framing qualification report](docs/qualifica
 - [Google Photos Toolkit](https://github.com/xob0t/Google-Photos-Toolkit)
 - [Official uploads](https://developers.google.com/photos/library/guides/upload-media)
 - [Chrome debugger API](https://developer.chrome.com/docs/extensions/reference/api/debugger)
+
+### Selected album/photo qualification
+
+After **Check connection**, copy its account value into **Expected Google account**.
+Paste a deliberately selected private album URL (`https://photos.google.com/album/ID`)
+and a library photo URL (`https://photos.google.com/photo/ID`), including a preserved
+Takeout URL if available. Keep the Google Photos tab selected and click **Inspect
+selected album and photo**. The account must match before any photo request is sent.
+Shared/album-scoped photo URLs are deliberately rejected for this probe.
+
+The probe reads album membership and the selected photo's basic/extended details.
+It reports counts of matching dedup keys and matching media keys independently;
+this is observed correspondence, not proof that all identifier namespaces are
+interchangeable. Basic and extended details must agree on their dedup key.
+The probe allows at most two album pages, 500 members, four requests and 4 MiB of
+sanitized evidence. Choose a small album; a limit or failed read stops subsequent
+requests and cannot produce a complete inspection. No automatic retry occurs.
+
+**Download capture** includes the sanitized returned results under `readInspection`,
+even without passive debugger capture. Aliases are consistent within that inspection
+only. Evidence completeness and read completion are separate: omitted/oversized
+bodies mark evidence incomplete even if strict parsing succeeded. The inspection
+always reports `retentionReady: false`. Raw selected URLs/account are not persisted
+in the popup. A popup timeout bounds waiting, not cancellation of an already issued
+read; check status before starting another operation.
+
+This probe has synthetic browser coverage. Live selected-album/photo qualification
+must still be performed and reported separately.

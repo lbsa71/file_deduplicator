@@ -32,8 +32,26 @@ try {
       if (rpc === "lcxiM") data = [[item()], null, "1700000000000"];
       else if (rpc === "EzkLib") data = [[item("media-a", true)], null];
       else if (rpc === "Z5xsfc") data = [[album()], null];
-      else if (rpc === "VrseUb") data = [item("PRIVATE_PHOTO_ID")];
-      else throw new Error(`Unexpected fixture RPC: ${rpc}`);
+      else if (rpc === "VrseUb") {
+        const args = JSON.parse(
+          JSON.parse(
+            new URLSearchParams(request.postData()).get("f.req"),
+          )[0][0][1],
+        );
+        data = [item(args[0])];
+      } else if (rpc === "snAcKc") {
+        const row = item("album-item-a");
+        row[3] = "dedup-media-a";
+        data = [null, [row], null, ["album-a"]];
+      } else if (rpc === "fDcn4b") {
+        const row = Array(20).fill(null);
+        row[0] = "media-a";
+        row[2] = "PRIVATE_FILENAME";
+        row[5] = 3;
+        row[11] = "dedup-media-a";
+        row[19] = [];
+        data = [row];
+      } else throw new Error(`Unexpected fixture RPC: ${rpc}`);
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -259,6 +277,30 @@ try {
     "A failed response must not trigger another read",
   );
 
+  await page.reload();
+  await panel.locator("#account").fill(ACCOUNT);
+  await panel
+    .locator("#album-url")
+    .fill("https://photos.google.com/album/album-a");
+  await panel
+    .locator("#photo-url")
+    .fill("https://photos.google.com/photo/media-a");
+  await panel.locator("#inspect").click();
+  await panel.waitForFunction(() =>
+    document
+      .querySelector("#status")
+      .textContent.includes('"detailsAgree": true'),
+  );
+  const selected = JSON.parse(await panel.locator("#status").textContent());
+  assert.equal(selected.matchingDedupKeys, 1);
+  assert.equal(selected.matchingMediaKeys, 0);
+  const selectionEvidence = (await command("export")).result.capture
+    .readInspection;
+  assert.equal(selectionEvidence.complete, true);
+  assert.equal(selectionEvidence.entries.length, 3);
+  assert.ok(!JSON.stringify(selectionEvidence).includes("PRIVATE_"));
+  assert.equal(actualRequests, 9);
+
   // Exercise the actual popup handler with a stalled browser injection. This
   // stays inside the synthetic profile and must not issue any photo request.
   await worker.evaluate(() => {
@@ -274,7 +316,7 @@ try {
   assert.equal(await panel.locator("#identity").isDisabled(), false);
   assert.equal(
     actualRequests,
-    6,
+    9,
     "A stalled identity check must not issue or replay traffic",
   );
   console.log(

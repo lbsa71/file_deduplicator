@@ -178,3 +178,24 @@ test("read failures expose only allowlisted diagnostic codes and phases", async 
       !error.message.includes("PRIVATE_"),
   );
 });
+
+test("selected inspection forwards explicit selection and prevents command envelope overrides", async () => {
+  const h = harness();
+  const selection = {
+    account: "a",
+    albumUrl: "https://photos.google.com/album/b",
+    photoUrl: "https://photos.google.com/photo/c",
+    action: "start",
+    tabId: 999,
+  };
+  await h.command("inspect", selection);
+  assert.deepEqual(h.calls[1], {
+    action: "inspect",
+    tabId: 7,
+    selection: {
+      account: "a",
+      albumUrl: selection.albumUrl,
+      photoUrl: selection.photoUrl,
+    },
+  });
+});

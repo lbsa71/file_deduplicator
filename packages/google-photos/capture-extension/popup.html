@@ -27,6 +27,27 @@
     <p>
       Inventory inspection sends read requests. It does not authorize cleanup.
     </p>
+    <hr />
+    <p>
+      Inspect one selected album and photo. Use Check connection to obtain the
+      account value. Choose an album with at most 500 items.
+    </p>
+    <label
+      >Expected Google account
+      <input id="account" type="text" autocomplete="off"
+    /></label>
+    <label
+      >Album URL <input id="album-url" type="url" autocomplete="off"
+    /></label>
+    <label
+      >Photo URL (library or Takeout link)
+      <input id="photo-url" type="url" autocomplete="off"
+    /></label>
+    <button id="inspect">Inspect selected album and photo</button>
+    <p>
+      Download capture exports sanitized returned results. No account or
+      selection values are saved in the popup.
+    </p>
     <output id="status" role="status" aria-live="polite">Ready</output>
   </main>
   <script type="module" src="popup.js"></script>

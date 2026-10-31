@@ -8,14 +8,29 @@ function setBusy(value) {
   busy = value;
   for (const button of buttons) button.disabled = value;
 }
-for (const id of ["start", "stop", "export", "identity", "inventory"])
+for (const id of [
+  "start",
+  "stop",
+  "export",
+  "identity",
+  "inventory",
+  "inspect",
+])
   document.getElementById(id).addEventListener("click", async () => {
     if (busy) return;
     setBusy(true);
     status.textContent =
       id === "inventory" ? "Reading Google Photos…" : "Working…";
     try {
-      const result = await command(id);
+      const selection =
+        id === "inspect"
+          ? {
+              account: document.querySelector("#account").value.trim(),
+              albumUrl: document.querySelector("#album-url").value.trim(),
+              photoUrl: document.querySelector("#photo-url").value.trim(),
+            }
+          : undefined;
+      const result = await command(id, selection);
       if (id === "export") {
         if (!result.capture) throw new Error("No capture available");
         const url = URL.createObjectURL(

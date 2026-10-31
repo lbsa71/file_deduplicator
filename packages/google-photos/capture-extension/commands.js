@@ -7,6 +7,7 @@ const deadlines = {
   stop: 15000,
   export: 10000,
   inventory: 300000,
+  inspect: 120000,
 };
 class CommandFailure extends Error {}
 const failure = (
@@ -18,7 +19,7 @@ export function createCommandClient({
   setTimeout = globalThis.setTimeout,
   clearTimeout = globalThis.clearTimeout,
 }) {
-  return function command(action) {
+  return function command(action, selection) {
     if (!Object.hasOwn(deadlines, action)) return Promise.reject(failure());
     return new Promise((resolve, reject) => {
       let expired = false;
@@ -44,6 +45,15 @@ export function createCommandClient({
         const response = await chrome.runtime.sendMessage({
           action,
           tabId: tab?.id,
+          ...(action === "inspect"
+            ? {
+                selection: {
+                  account: selection?.account,
+                  albumUrl: selection?.albumUrl,
+                  photoUrl: selection?.photoUrl,
+                },
+              }
+            : {}),
         });
         if (expired) return;
         if (response?.ok === false)
