@@ -8,6 +8,10 @@ integration designs. Existing milestones below provide historical evidence;
 completion requires current implementation and verification. This is a backlog,
 not a claim that the full service is complete or an active autonomous work goal.
 
+The [production Google reconciliation gap assessment](packages/google-photos/docs/production-reconciliation-gap.md)
+records the latest Linux checks, deployed-versus-repository differences, real
+library coverage and the remaining end-to-end proof-of-concept milestones.
+
 | Area | Current evidence / remaining work |
 | --- | --- |
 | Local development and worker connection | Running HTTPS scratch library; page-based Chrome pairing and live inventory verified; endpoint preference survives failed pairing. Reconnect now reports readiness after matching the signed-in account, without requiring another photo read; failed-job attention remains latched until a successful job |
@@ -19,7 +23,7 @@ not a claim that the full service is complete or an active autonomous work goal.
 | Upload/export (U01–U05, D01–D02) | Existing resumable uploads and byte-preserving exports; cancellation/expiry/type/checksum/fault and resumable export gates need audit |
 | Trash/purge (T01–T04) | Recoverable trash exists; atomic subtree promotion/restore and explicit manifest-bound administrator purge remain |
 | Durable operations (J01–J03, OPS-01) | Persistent statuses exist; restart-safe dispatch, safe-boundary cancellation/retry, authenticated SSE, watcher reconciliation and targeted dependencies remain |
-| Google reconciliation | Worker read jobs and isolated mutation pilots exist; larger originals/companions, image upload qualification, identity mapping, review/planning and metadata-round-trip integration remain. Cloud mutation enablement still requires the specified isolated-account evidence |
+| Google reconciliation | Worker reads, account-authorized mutation pilots and one-original import/local verification exist; larger originals/companions, image upload qualification, legacy Takeout identity mapping, review/planning and metadata-round-trip integration remain. ADR 0006 permits owner-authorized personal-account pilots; production retention still requires operation-specific evidence and verified preconditions |
 | Release/operations (O01–O03) | Linux/exFAT/PAM/SMB integration, capacity/failure measurements, backup restore, format capability report and complete release artifacts need current gate-by-gate evidence |
 
 The first local implementation sequence is media rendering, Darwin filesystem
