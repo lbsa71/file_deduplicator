@@ -6,6 +6,11 @@ and initial read-only worker integration are implemented; further operations
 remain pending. Production cloud
 mutations are not enabled.
 
+The owner-approved backup waiver and keep rules in
+[ADR 0009](0009-owner-approved-google-retention-sweep.md) supersede the independent
+backup verification requirement in this historical design. Missing or unverified
+local originals remain protected in Google.
+
 ## Intent and retention requirements
 
 [ADR 0007](0007-cleanup-before-publication.md) defines execution order: verified
