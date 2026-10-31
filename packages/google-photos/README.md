@@ -109,7 +109,10 @@ instead of staying on "Working…". Other popup commands also have deadlines;
 none is automatically retried. A timeout does not cancel an operation already
 sent to the browser: check capture status before repeating a capture command.
 
-The extension never uploads/favorites/deletes anything. **Read inventory counts**
+Passive capture and the popup's inspection actions do not mutate photos. The
+paired desktop worker can separately execute explicitly authorized pilot writes
+under [ADR 0006](../../apps/web/spec/adr/0006-account-authorized-google-pilots.md).
+It has no permanent-delete or image-upload job. **Read inventory counts**
 is a separate explicit action that issues read requests; it does not produce a
 retention-ready inventory because it does not enumerate every album's members.
 Read failures show fixed diagnostic codes and, for transport failures, the fetch,
