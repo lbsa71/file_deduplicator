@@ -232,3 +232,46 @@ an initial implementation, not certification of every acceptance gate:
 Back up originals, sidecars, folder intent, relocation mappings and trash manifests.
 The SQLite catalog and thumbnail cache are disposable. Do not remove source JSON
 merely because its associated image has moved.
+
+## Google Photos desktop worker
+
+Administrators now have a Google Photos connection control in the header. Install
+[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.2.0.zip)
+as an unpacked Chrome/Edge extension. Choose the folder containing manifest.json;
+source installation is deliberately disabled. Existing installations must rebuild
+and manually reload their unpacked extension. Version 0.2 adds alarms and access
+to photos.lbsa71.net for pairing and job transport.
+
+Open Google Photos, use Check connection, and copy its account value into the
+PhotoFlow connection panel. Create a pairing code there, paste it into the
+extension while the Google tab is selected, and click Pair with PhotoFlow. A
+single read-only inventory job is queued automatically. The warning clears after
+successful validated reads. Read inventory counts submits another job; Disconnect
+Google worker revokes the server credential. Forget pairing on this browser clears
+local credentials only; use the PhotoFlow action to revoke server authorization.
+
+The desktop initiates WSS over the existing HTTPS hostname, so it needs no inbound
+network access. Google authentication stays in the desktop profile. Counts and
+job states persist independently of photo scans. A closed browser leaves reads
+queued; expired Google login needs attention in that browser. Pairing credentials
+expire after 14 days. The first release requires a manual copy/paste pairing code;
+connection is not automatically initiated merely by opening Google Photos.
+
+For troubleshooting, download a job's server diagnostics in PhotoFlow and the
+latest worker diagnostics from the extension. Correlate job ID/attempt/phase;
+review sanitized data before sharing. These diagnostics do not prove remote
+absence or authorize removal. See [ADR 0004](spec/adr/0004-desktop-google-worker.md)
+for the protocol, storage, bounds and procedure for adding job types.
+
+Developer verification (Node 22, Python web dependencies, OpenSSL and Chromium):
+
+```sh
+make build-web
+npm run build:capture --prefix packages/google-photos
+PHOTOFLOW_TEST_PYTHON=/path/to/web-venv/bin/python npm run test:worker --prefix packages/google-photos
+```
+
+The test launches a disposable HTTPS/WSS app on loopback port 8099 and a temporary
+extension profile. It replaces the extension's origin only inside that temporary
+build; the shipped extension remains pinned to photos.lbsa71.net. All Google
+responses are synthetic. It neither opens nor modifies the real library.

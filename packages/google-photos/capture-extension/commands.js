@@ -8,6 +8,11 @@ const deadlines = {
   export: 10000,
   inventory: 300000,
   inspect: 120000,
+  "worker-diagnostics": 10000,
+  "worker-pair": 30000,
+  "worker-status": 5000,
+  "worker-disconnect": 5000,
+  "worker-connect": 10000,
 };
 class CommandFailure extends Error {}
 const failure = (
@@ -45,6 +50,7 @@ export function createCommandClient({
         const response = await chrome.runtime.sendMessage({
           action,
           tabId: tab?.id,
+          ...(action === "worker-pair" ? { code: selection?.code } : {}),
           ...(action === "inspect"
             ? {
                 selection: {

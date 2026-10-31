@@ -1,8 +1,9 @@
 # ADR 0003: Google Photos retention and metadata round trips
 
 Status: Library architecture accepted — 2026-10-30. The standalone package and
-capture tooling are implemented in `packages/google-photos`; live-account
-qualification and application integration remain pending. Production cloud
+capture tooling are implemented in `packages/google-photos`. Live count reads
+and initial read-only worker integration are implemented; further operations
+remain pending. Production cloud
 mutations are not enabled.
 
 ## Intent and retention requirements
@@ -191,3 +192,7 @@ uploaded images retain remote identity in receipts. Content matching remains a
 fallback for missing or ambiguous references, rather than the default for all
 Takeout records. Local videos and required companion preservation remain relevant
 to archival safety even though video uploading is out of scope.
+
+The initial read-only WSS worker is now implemented; see
+[ADR 0004](0004-desktop-google-worker.md) for its job protocol, limits, diagnostics
+and new-operation development procedure. Cloud mutations remain disabled.

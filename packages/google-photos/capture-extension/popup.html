@@ -48,6 +48,20 @@
       Download capture exports sanitized returned results. No account or
       selection values are saved in the popup.
     </p>
+    <hr />
+    <p>
+      Connect to PhotoFlow to run read-only inventory jobs. Create a pairing
+      code in PhotoFlow, then select your signed-in Google Photos tab.
+    </p>
+    <label
+      >PhotoFlow pairing code
+      <input id="pair-code" type="password" autocomplete="off"
+    /></label>
+    <button id="worker-pair">Pair with PhotoFlow</button>
+    <button id="worker-diagnostics">Download worker diagnostics</button>
+    <button id="worker-status">Worker status</button>
+    <button id="worker-connect">Reconnect worker</button>
+    <button id="worker-disconnect">Forget pairing on this browser</button>
     <output id="status" role="status" aria-live="polite">Ready</output>
   </main>
   <script type="module" src="popup.js"></script>

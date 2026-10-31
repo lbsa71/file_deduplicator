@@ -6,6 +6,7 @@ await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 for (const file of [
   "background.js",
+  "desktop.js",
   "commands.js",
   "diagnostics.js",
   "popup.js",

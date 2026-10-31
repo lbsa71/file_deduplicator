@@ -92,5 +92,7 @@ deletion permission from a normal ingestion run or from a failed backup lookup.
 
 Cloud upload and cleanup proposals are described in
 [ADR 0003](apps/web/spec/adr/0003-google-photos-reconciliation.md). The standalone
-library/capture package is implemented; live qualification and application
-integration are pending, and production cloud mutations are not enabled.
+library/capture package and initial read-only WSS worker are implemented. Live
+count enumeration is qualified; other operations and production cloud mutations
+remain gated. Follow [ADR 0004](apps/web/spec/adr/0004-desktop-google-worker.md)
+when adding job types and collecting diagnostic evidence.

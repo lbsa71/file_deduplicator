@@ -25,6 +25,9 @@ numbers are acceptance targets to measure, not results already achieved.
 
 ## Architecture decisions
 
+- [ADR 0004: Desktop Google worker](adr/0004-desktop-google-worker.md) describes
+  paired WSS jobs, persistent results and the investigation/diagnostic workflow.
+
 - [ADR 0003: Google Photos retention and metadata round trips](adr/0003-google-photos-reconciliation.md)
   records the retention rules and standalone defensive library/capture tooling;
   application integration and live qualification remain future work.

@@ -1,11 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "PhotoFlow Google Photos Capture",
-  "version": "0.1.0",
-  "description": "Record sanitized Google Photos protocol traces and inspect the library without changing photos.",
-  "permissions": ["activeTab", "debugger", "scripting", "storage"],
-  "host_permissions": ["https://photos.google.com/*"],
-  "background": { "service_worker": "background.js", "type": "module" },
+  "name": "PhotoFlow Google Photos",
+  "version": "0.2.0",
+  "description": "Run read-only PhotoFlow inventory jobs and capture sanitized Google Photos protocol evidence.",
+  "permissions": ["activeTab", "debugger", "scripting", "storage", "alarms"],
+  "host_permissions": [
+    "https://photos.google.com/*",
+    "https://photos.lbsa71.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Google Photos capture"

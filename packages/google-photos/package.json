@@ -1,6 +1,6 @@
 {
   "name": "@photoflow/google-photos",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Strict Google Photos protocol adapters, reconciliation rules, and passive capture tools",
   "type": "module",
   "engines": {
@@ -10,7 +10,10 @@
     ".": "./src/index.js",
     "./browser": "./src/browser.js",
     "./node": "./src/node.js",
-    "./capture": "./src/capture.js"
+    "./capture": "./src/capture.js",
+    "./worker": "./src/worker.js",
+    "./jobs": "./src/jobs.js",
+    "./job-diagnostics": "./src/job-diagnostics.js"
   },
   "files": [
     "src",
@@ -23,7 +26,8 @@
     "test": "node --test test/*.test.js",
     "build:capture": "node tools/build-capture.js",
     "test:browser": "node tools/browser-smoke.mjs",
-    "prepack": "npm run build:capture"
+    "prepack": "npm run build:capture",
+    "test:worker": "node tools/worker-smoke.mjs"
   },
   "devDependencies": {
     "playwright": "1.64.1"

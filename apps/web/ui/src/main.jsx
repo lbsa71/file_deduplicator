@@ -4,6 +4,7 @@ import "./style.css";
 import { parseRoute, routeURL, followLink } from "./routes.js";
 import { queryScope, queryParams } from "./query.js";
 import { Filters, FilterChips } from "./filters.jsx";
+import { GoogleConnection } from "./google.jsx";
 import { SavedViews, BatchDialog } from "./workspace.jsx";
 function App() {
   const [user, setUser] = S(null),
@@ -489,6 +490,7 @@ function App() {
       </aside>
       <main>
         <header>
+          {user.role >= 3 && <GoogleConnection key={user.username} api={api} />}
           <input
             aria-label="Search library"
             placeholder="Search people, albums, filenames…"

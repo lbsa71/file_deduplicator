@@ -19,7 +19,8 @@ introduced when there is code both applications actually use.
 
 The [Google Photos library](packages/google-photos/README.md) has its own package,
 tests, and browser capture tooling so it can be extracted into a separate repository.
-Its live-account qualification and PhotoFlow UI integration remain pending.
+PhotoFlow now pairs with its read-only desktop worker over WSS. Live count
+enumeration is qualified; uploads and mutations still require separate qualification.
 
 ## Development
 

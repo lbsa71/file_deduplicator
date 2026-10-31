@@ -15,6 +15,11 @@ for (const id of [
   "identity",
   "inventory",
   "inspect",
+  "worker-diagnostics",
+  "worker-pair",
+  "worker-status",
+  "worker-disconnect",
+  "worker-connect",
 ])
   document.getElementById(id).addEventListener("click", async () => {
     if (busy) return;
@@ -30,8 +35,14 @@ for (const id of [
               photoUrl: document.querySelector("#photo-url").value.trim(),
             }
           : undefined;
-      const result = await command(id, selection);
-      if (id === "export") {
+      const result = await command(
+        id,
+        id === "worker-pair"
+          ? { code: document.querySelector("#pair-code").value.trim() }
+          : selection,
+      );
+      if (id === "worker-pair") document.querySelector("#pair-code").value = "";
+      if (id === "export" || id === "worker-diagnostics") {
         if (!result.capture) throw new Error("No capture available");
         const url = URL.createObjectURL(
           new Blob([JSON.stringify(result.capture, null, 2)], {
@@ -40,10 +51,16 @@ for (const id of [
         );
         const a = document.createElement("a");
         a.href = url;
-        a.download = "google-photos.capture.json";
+        a.download =
+          id === "worker-diagnostics"
+            ? "google-photos-worker-diagnostics.json"
+            : "google-photos.capture.json";
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 10000);
-        status.textContent = `Downloaded ${result.capture.entries.length} sanitized interactions. Complete: ${result.capture.complete}`;
+        status.textContent =
+          id === "worker-diagnostics"
+            ? "Downloaded sanitized worker diagnostics."
+            : `Downloaded ${result.capture.entries.length} sanitized interactions. Complete: ${result.capture.complete}`;
       } else status.textContent = JSON.stringify(result, null, 2);
     } catch (e) {
       status.textContent = e.message;

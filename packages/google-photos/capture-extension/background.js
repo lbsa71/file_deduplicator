@@ -2,6 +2,7 @@ import { PassiveRecorder, sanitizeReadEvidence } from "./lib/capture.js";
 import { GooglePhotosClient } from "./lib/client.js";
 import { pageRequest, createPageTransport } from "./lib/browser.js";
 import { inspectSelection } from "./lib/inspection.js";
+import { installDesktopWorker } from "./desktop.js";
 import { sanitizeReadDiagnostic } from "./diagnostics.js";
 let tabId = null,
   recorder = null,
@@ -27,6 +28,7 @@ async function evaluate(id, fn, arg) {
     throw new Error("Unexpected browser frame");
   return results[0].result;
 }
+const desktop = installDesktopWorker(evaluate);
 async function stop() {
   if (tabId !== null) {
     const id = tabId;
@@ -69,6 +71,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   (async () => {
     switch (message.action) {
+      case "worker-diagnostics":
+      case "worker-pair":
+      case "worker-status":
+      case "worker-disconnect":
+      case "worker-connect":
+        return await desktop.command(message.action, message);
       case "status":
         return {
           recording: tabId !== null,

@@ -542,3 +542,28 @@ button:disabled {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+.google-panel {
+  position: absolute;
+  top: 5rem;
+  right: 1rem;
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: 80vh;
+  overflow: auto;
+  z-index: 20;
+  background: var(--surface, #fff);
+  color: var(--text, #222);
+  border: 1px solid #888;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 8px 32px #0003;
+}
+.google-panel input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.4rem 0;
+}
+.google-panel button {
+  margin: 0.25rem;
+}

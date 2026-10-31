@@ -747,6 +747,10 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
             raise KeyError(ident)
         return json.loads(r[0])
 
+    from .google_workers import install_worker_routes
+
+    install_worker_routes(app, library, session, lambda owner: role(owner) >= 3)
+
     static = Path(static_root) if static_root else Path(__file__).parent / "static"
     if static.exists():
         app.mount("/", FrontendFiles(directory=static, html=True), name="ui")
@@ -761,6 +765,7 @@ def main():
         create_app(),
         host="127.0.0.1",
         port=int(os.environ.get("PORT", "8090")),
+        ws_max_size=16384,
         proxy_headers=True,
         forwarded_allow_ips="127.0.0.1",
     )
