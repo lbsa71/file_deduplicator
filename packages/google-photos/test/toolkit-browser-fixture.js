@@ -5,6 +5,8 @@ export function toolkitBrowserFixture({ personal = false } = {}) {
     archived: false,
     trashed: false,
     member: false,
+    invalidDetails: false,
+    untitledMembership: false,
     description: "",
     timestamp: 1700000000000,
     timezone: 0,
@@ -29,13 +31,21 @@ export function toolkitBrowserFixture({ personal = false } = {}) {
     const row = Array(32).fill(null);
     row[0] = "media-a";
     row[1] = state.description;
-    row[2] = personal ? "Family holiday.jpg" : "photoflow-test-fixture.jpg";
+    row[2] = state.invalidDetails
+      ? null
+      : personal
+        ? "Family holiday.jpg"
+        : "photoflow-test-fixture.jpg";
     row[3] = state.timestamp;
     row[4] = state.timezone;
     row[5] = state.originalSize;
     row[11] = "dedup-media-a";
     row[13] = state.location ? [state.location] : null;
     row[19] = state.member ? [albumRow(state.albums[0])] : [];
+    if (state.member && state.untitledMembership) {
+      row[19][0].at(-1)[72930366][1] = null;
+      row[19][0].at(-1)[72930366][4] = true;
+    }
     return row;
   };
   return {

@@ -69,6 +69,15 @@ with tempfile.TemporaryDirectory(prefix="photoflow-google-worker-") as temporary
         from photoflow.model import Record
         from photoflow_web.core import atomic, digest
         library = app.state.library
+        # Reset synthetic original bytes if the earlier download's asynchronous
+        # organizer moved them. Retention qualification owns a stable fixture.
+        with library.db() as db:
+            records = [json.loads(row[0]) for row in db.execute("SELECT data FROM photos")]
+        for existing in records:
+            target = library.path(existing["file"]["relative_path"])
+            if existing["file"].get("sha256") == digest(original) and not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(original)
         record = Record.create("takeout-a", "worker-fixture", "inbox/takeout.jpg").data
         document = {"url": "https://photos.google.com/photo/media-a", "title": name}
         raw = json.dumps(document).encode()

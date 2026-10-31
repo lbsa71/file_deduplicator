@@ -115,7 +115,7 @@ export function GoogleReconciliation({ call, account, targetPolicy }) {
       </button>
       <ul>
         {jobs.slice(0, 15).map((job) => (
-          <li key={job.id}>
+          <li key={job.id} data-reconciliation-job={job.id}>
             {job.action}: {job.state}
             {job.waiting_reason ? " — " + job.waiting_reason : ""}
             {job.progress?.stage ? " — " + job.progress.stage : ""}

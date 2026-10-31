@@ -90,7 +90,8 @@ export class ToolkitPilot {
       if (!(await this.inTrash(photo))) {
         const basic = await this.reader.item(mediaKey);
         requireThat(
-          basic.mediaKey === photo.mediaKey && basic.dedupKey === photo.dedupKey,
+          basic.mediaKey === photo.mediaKey &&
+            basic.dedupKey === photo.dedupKey,
           "Restoration identity changed",
           "PRECONDITION",
         );
@@ -132,7 +133,7 @@ export class ToolkitPilot {
     requireThat(
       album &&
         (targetPolicy === "selected" ||
-          album.title.startsWith("PhotoFlow test ")) &&
+          album.title?.startsWith("PhotoFlow test ")) &&
         album.shared === false,
       "Expected private album allowed by pilot target policy",
       "PRECONDITION",

@@ -186,3 +186,27 @@ in Google Trash; the next target was in flight and no worker errors were present
 The full sweep was still running at that checkpoint. This is evidence that real
 production Trash execution works, not a claim that all 7,684 operations completed.
 Private manifests, job IDs, progress artifacts and screenshots remain outside Git.
+
+## Untitled shared membership during preflight
+
+The sweep stopped before sending target 273 after 272 verified Trash receipts.
+The fresh extended details contained a positive shared-album membership with an
+explicit null title. The complete ordinary album listing had not classified that
+membership; the per-target check prevented an incorrect removal.
+
+Album identities, counts and sharing flags remain validated. An explicit null
+title is now preserved as unknown metadata, so positive membership protects the
+photo without fabricating a title or treating it as an empty membership. Missing
+or malformed identities still stop before writing.
+
+An explicit production preflight retry retains the original worker job ID, exact
+manifest/target authority and durable browser intent. It issues a new lease only
+for a failed PROTOCOL attempt whose recorded phases never reached sending. The
+failed attempt is archived before requeue. Sent or unknown writes cannot use this
+path; an existing unresolved browser intent independently blocks execution, and
+a verified intent returns its original receipt. Completed sweep steps are reused.
+
+Validation: 155 backend and 157 package tests pass. The synthetic extension E2E
+completed 161 fixture Google requests and exercised a failed preflight, explicit
+same-job retry, newly protected untitled shared membership, no write on that
+member, and exact coordinator resume. No real Google traffic was used by the test.

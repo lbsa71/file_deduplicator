@@ -35,8 +35,11 @@ def field(kind, value):
     if kind == "id":
         check(isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,256}", value))
     elif kind == "dedupKey":
-        check(isinstance(value, str) and 0 < len(value) <= 256
-              and re.fullmatch(r"[A-Za-z0-9_-]+(?::[A-Za-z0-9_-]+)*", value))
+        check(
+            isinstance(value, str)
+            and 0 < len(value) <= 256
+            and re.fullmatch(r"[A-Za-z0-9_-]+(?::[A-Za-z0-9_-]+)*", value)
+        )
     elif kind == "cursor":
         check(
             isinstance(value, str)
@@ -110,7 +113,10 @@ def album(value):
         and value["namespace"] == "album"
     )
     field("id", value["albumId"])
-    check(isinstance(value["title"], str) and len(value["title"]) <= 8192)
+    check(
+        value["title"] is None
+        or (isinstance(value["title"], str) and len(value["title"]) <= 8192)
+    )
     integer(value["itemCount"])
     check(value["shared"] is None or type(value["shared"]) is bool)
 
@@ -244,10 +250,22 @@ def validate_result(operation, spec, result):
         )
         field("id", result["mediaKey"])
     elif kind == "original":
-        check(set(result) == {"mediaKey", "recordId", "sha256", "bytes", "outcome", "retentionReady"})
+        check(
+            set(result)
+            == {"mediaKey", "recordId", "sha256", "bytes", "outcome", "retentionReady"}
+        )
         field("id", result["mediaKey"])
-        check(isinstance(result["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", result["sha256"]))
-        check(isinstance(result["recordId"], str) and re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", result["recordId"]))
+        check(
+            isinstance(result["sha256"], str)
+            and re.fullmatch(r"[a-f0-9]{64}", result["sha256"])
+        )
+        check(
+            isinstance(result["recordId"], str)
+            and re.fullmatch(
+                r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}",
+                result["recordId"],
+            )
+        )
         integer(result["bytes"], 1, 16 * 1024**2)
         check(result["outcome"] in ("imported", "already-present"))
     elif kind == "mutation":

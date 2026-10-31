@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { JOBS } from "../src/jobs.js";
 import { parsePage, parseDetails } from "../src/protocol.js";
 
 test("extended details distinguish explicit empty album membership from missing facts", () => {
@@ -56,3 +57,27 @@ for (const [rpc, extended] of [
     );
     assert.equal(parseDetails(data, data[0][0], extended).mediaKey, data[0][0]);
   });
+
+test("untitled shared album membership remains a positive protection with an unknown title", () => {
+  const row = Array(33).fill(null);
+  Object.assign(row, { 0: "media-a", 2: "photo.jpg", 5: 100, 11: "dedup-a" });
+  row[19] = [["shared-album", [], { 72930366: [4, null, null, 3, true] }]];
+  const details = parseDetails([row], "media-a", true);
+  JOBS["albums-page"].validateResult({
+    items: details.albums,
+    next: null,
+    complete: true,
+    retentionReady: false,
+  });
+  assert.deepEqual(details.albums, [
+    {
+      namespace: "album",
+      albumId: "shared-album",
+      title: null,
+      itemCount: 3,
+      shared: true,
+    },
+  ]);
+  row[19][0][0] = null;
+  assert.throws(() => parseDetails([row], "media-a", true));
+});

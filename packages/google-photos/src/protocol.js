@@ -72,8 +72,7 @@ export function decodeEnvelope(body, expectedRpc) {
         throw new ProtocolError("Invalid RPC payload JSON");
       }
       requireThat(
-        Array.isArray(value) &&
-          (value.length > 0 || expectedRpc === "zy0IHe"),
+        Array.isArray(value) && (value.length > 0 || expectedRpc === "zy0IHe"),
         "Missing RPC payload structure",
       );
       found.push(value);
@@ -124,7 +123,7 @@ export function parseAlbum(row) {
   return {
     namespace: "album",
     albumId: identifier(row[0], "album ID"),
-    title: text(fields[1], "album title"),
+    title: fields[1] === null ? null : text(fields[1], "album title"),
     itemCount: count,
     shared: knownBoolean(fields[4], "shared flag"),
   };
@@ -133,8 +132,7 @@ export function parsePage(data, kind, expectedAlbum) {
   array(data, "page");
   // Qualified against the Google Trash UI's "No items" state. Other page
   // operations still require their items field; [] must not imply absence there.
-  if (kind === "trash" && data.length === 0)
-    return { items: [], next: null };
+  if (kind === "trash" && data.length === 0) return { items: [], next: null };
   const isAlbum = kind === "albumItems";
   const offset = isAlbum ? 1 : 0;
   requireThat(data.length > offset, "Missing items field");
@@ -143,8 +141,13 @@ export function parsePage(data, kind, expectedAlbum) {
     requireThat(context[0] === expectedAlbum, "Wrong album identity");
   // The controlled empty test album returns null items, an explicit empty
   // cursor, and [0,0] at context[2]. Missing/changed fields stay incompatible.
-  const emptyAlbum = isAlbum && data[1] === null && data[2] === "" &&
-    Array.isArray(context[2]) && context[2][0] === 0 && context[2][1] === 0;
+  const emptyAlbum =
+    isAlbum &&
+    data[1] === null &&
+    data[2] === "" &&
+    Array.isArray(context[2]) &&
+    context[2][0] === 0 &&
+    context[2][1] === 0;
   const rows = emptyAlbum ? [] : array(data[offset], "page items");
   const cursor = data[offset + 1];
   // Protobuf JSON omits trailing fields. Explicit null/empty and omitted trailing

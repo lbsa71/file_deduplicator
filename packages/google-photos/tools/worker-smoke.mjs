@@ -518,6 +518,98 @@ try {
     assert.equal(fixture.state.trashed, true);
     assert.equal(fixture.state.writes.length, beforePrepare + 2);
   }
+  if (targetPolicy === "selected") {
+    // A separate exact manifest fails before intent, then keeps a newly protected
+    // untitled shared-album member when the same worker intent is retried.
+    fixture.state.trashed = false;
+    async function commands() {
+      return (
+        await (
+          await context.request.get(endpoint + "/api/v1/google/reconciliation")
+        ).json()
+      ).items;
+    }
+    async function waitCommand(predicate) {
+      let found;
+      for (let n = 0; n < 450; n++) {
+        found = (await commands()).find(predicate);
+        if (found && ["succeeded", "partial", "failed"].includes(found.state))
+          return found;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      throw new Error(
+        "Timed out waiting for exact synthetic command " +
+          JSON.stringify(found),
+      );
+    }
+    assert.ok((await context.request.post(endpoint + "/fixture-takeout")).ok());
+    const beforeIds = new Set((await commands()).map((j) => j.id));
+    await ui
+      .getByRole("button", { name: "Prepare dry-run manifest", exact: true })
+      .click();
+    const source = await waitCommand(
+      (j) => j.action === "google.prepare" && !beforeIds.has(j.id),
+    );
+    assert.equal(source.state, "succeeded");
+    await ui
+      .locator(`[data-reconciliation-job="${source.id}"]`)
+      .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+      .click();
+    await preview
+      .getByRole("button", { name: "Prepare Takeout Trash sweep", exact: true })
+      .click();
+    const prepared = await waitCommand(
+      (j) =>
+        j.action === "google.prepare-takeout" &&
+        j.params.sourceManifestId === source.id,
+    );
+    assert.equal(prepared.state, "succeeded");
+    await ui
+      .locator(`[data-reconciliation-job="${prepared.id}"]`)
+      .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+      .click();
+    await preview.getByText(new RegExp("Manifest " + prepared.id)).waitFor();
+    fixture.state.invalidDetails = true;
+    await preview
+      .getByText(
+        "I reviewed this manifest and authorize its listed executable operations.",
+        { exact: true },
+      )
+      .click();
+    await preview
+      .getByRole("button", { name: "Commit reviewed manifest", exact: true })
+      .click();
+    const failed = await waitCommand(
+      (j) =>
+        j.action === "google.commit" && j.params.manifestId === prepared.id,
+    );
+    assert.equal(failed.state, "partial");
+    assert.equal(fixture.state.writes.length, beforePrepare + 2);
+    fixture.state.invalidDetails = false;
+    fixture.state.member = true;
+    fixture.state.untitledMembership = true;
+    await ui
+      .getByRole("button", { name: "Retry failed preflight", exact: true })
+      .click();
+    await ui
+      .locator(".google-panel ol>li")
+      .filter({ hasText: "trash: succeeded — unchanged" })
+      .waitFor({ timeout: 30000 });
+    await ui
+      .locator(`[data-reconciliation-job="${failed.id}"]`)
+      .getByRole("button", { name: "Resume interrupted commit", exact: true })
+      .click();
+    const finished = await waitCommand((j) => j.id === failed.id);
+    // retry/resume is asynchronous; require the exact command to finish again.
+    let final = finished;
+    for (let n = 0; n < 150 && final.state !== "succeeded"; n++) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      final = (await commands()).find((j) => j.id === failed.id);
+    }
+    assert.equal(final.state, "succeeded", JSON.stringify(final));
+    assert.equal(fixture.state.trashed, false);
+    assert.equal(fixture.state.writes.length, beforePrepare + 2);
+  }
   const completedJobs = await ui.locator(".google-panel ol>li").count();
   console.log(
     JSON.stringify({
@@ -539,6 +631,7 @@ try {
       phases: true,
       sanitizedDiagnostics: true,
       productionTakeoutSweep: targetPolicy === "selected",
+      preflightRetryPreservesUntitledAlbumMember: targetPolicy === "selected",
       realGoogleTraffic: false,
     }),
   );

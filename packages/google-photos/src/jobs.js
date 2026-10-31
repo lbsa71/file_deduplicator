@@ -43,7 +43,8 @@ export function validateField(type, value, field = "field") {
   const rules = {
     id: () => typeof value === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(value),
     dedupKey: () =>
-      typeof value === "string" && value.length <= 256 &&
+      typeof value === "string" &&
+      value.length <= 256 &&
       /^[A-Za-z0-9_-]+(?::[A-Za-z0-9_-]+)*$/.test(value),
     cursor: () =>
       typeof value === "string" &&
@@ -167,8 +168,8 @@ function album(value) {
   requireThat(
     Object.keys(value).length === 5 &&
       value.namespace === "album" &&
-      typeof value.title === "string" &&
-      value.title.length <= 8192 &&
+      (value.title === null ||
+        (typeof value.title === "string" && value.title.length <= 8192)) &&
       (value.shared === null || typeof value.shared === "boolean"),
     "Invalid album",
   );

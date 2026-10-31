@@ -64,7 +64,8 @@ class WorkerStore:
                 """CREATE TABLE IF NOT EXISTS pairing(code TEXT PRIMARY KEY,owner TEXT,account TEXT,expires REAL);
             CREATE TABLE IF NOT EXISTS workers(id TEXT PRIMARY KEY,owner TEXT UNIQUE,account TEXT UNIQUE,token TEXT,expires REAL,last_seen REAL,ready INTEGER);
             CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner TEXT,worker TEXT,state TEXT,lease TEXT,started REAL,created REAL,result TEXT,error TEXT);
-            CREATE TABLE IF NOT EXISTS job_requests(owner TEXT,request_key TEXT,job TEXT,PRIMARY KEY(owner,request_key));"""
+            CREATE TABLE IF NOT EXISTS job_requests(owner TEXT,request_key TEXT,job TEXT,PRIMARY KEY(owner,request_key));
+            CREATE TABLE IF NOT EXISTS preflight_retries(job TEXT,attempt INTEGER,error TEXT,events TEXT,created REAL,PRIMARY KEY(job,attempt));"""
             )
             for name, definition in [
                 ("operation", "TEXT NOT NULL DEFAULT 'inventory-counts'"),
@@ -230,6 +231,57 @@ class WorkerStore:
             )
             row = db.execute("SELECT * FROM jobs WHERE id=?", (ident,)).fetchone()
         return self.public_job(row)
+
+    @staticmethod
+    def preflight_retryable(row):
+        phases = {
+            e["phase"]
+            for e in json.loads(row["events"])
+            if e.get("attempt") == row["attempt"]
+        }
+        return bool(
+            row["retention_scope"]
+            and row["operation"] == "trash"
+            and row["state"] == "failed"
+            and row["error"] == "PROTOCOL"
+            and "preflight" in phases
+            and phases <= {"checking", "preflight", "failed"}
+        )
+
+    def retry_preflight(self, owner, ident):
+        """Explicit same-intent retry only before sending; the browser journal is authoritative."""
+        with self.db() as db:
+            row = db.execute(
+                "SELECT * FROM jobs WHERE id=? AND owner=?", (ident, owner)
+            ).fetchone()
+            check(row and self.preflight_retryable(row))
+            check(row["not_after"] is not None and row["not_after"] > self.now())
+            worker = db.execute(
+                "SELECT * FROM workers WHERE id=? AND owner=? AND expires>?",
+                (row["worker"], owner, self.now()),
+            ).fetchone()
+            check(
+                worker
+                and worker["account"] == row["account"] == self.pilot_account
+                and self.target_policy == row["target_policy"] == "selected"
+            )
+            check(
+                not db.execute(
+                    "SELECT 1 FROM jobs WHERE account=? AND state='unknown'",
+                    (row["account"],),
+                ).fetchone()
+            )
+            db.execute(
+                "INSERT INTO preflight_retries VALUES(?,?,?,?,?)",
+                (ident, row["attempt"], row["error"], row["events"], self.now()),
+            )
+            db.execute(
+                "UPDATE jobs SET state='queued',lease=NULL,started=NULL,error=NULL WHERE id=?",
+                (ident,),
+            )
+            return self.public_job(
+                db.execute("SELECT * FROM jobs WHERE id=?", (ident,)).fetchone()
+            )
 
     def enqueue(self, owner, operation="inventory-counts", value=None, confirmed=False):
         with self.db() as db:
@@ -682,6 +734,7 @@ class WorkerStore:
             ),
             "version": row["version"],
             "suite": row["suite"],
+            "retry_preflight_allowed": WorkerStore.preflight_retryable(row),
             "events": json.loads(row["events"]),
             "attempt": row["attempt"],
             "state": row["state"],
@@ -918,6 +971,12 @@ def install_worker_routes(
         result = store.suite(
             owner, body.get("jobs"), body.get("confirmTestWrite", False)
         )
+        wake()
+        return result
+
+    @app.post("/api/v1/google/jobs/{ident}/retry-preflight")
+    async def retry_preflight(ident: str, req: Request):
+        result = store.retry_preflight(session(req, 3, True)["username"], ident)
         wake()
         return result
 

@@ -426,3 +426,83 @@ class TakeoutAuthorityTests(unittest.TestCase):
             self.assertEqual(
                 store.diagnostic("alice", job["id"])["job"]["state"], "blocked"
             )
+
+class RetentionPreflightRetryTests(unittest.TestCase):
+    def test_explicit_preflight_retry_keeps_same_intent_and_archives_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = WorkerStore(
+                directory, pilot_account="a", target_policy="selected", now=lambda: 1000
+            )
+            store.retention_check = lambda *args: True
+            worker = store.pair(store.pairing("alice", "a")["code"], "a")
+            scope = {
+                "purpose": "owner-authorized-takeout-retention",
+                "manifestId": "b" * 32,
+                "manifestSha256": "c" * 64,
+                "localSha256": "d" * 64,
+                "dedupKey": "dedup-a",
+                "photoKey": "media-a",
+            }
+            job = store.enqueue_once(
+                "alice",
+                "sweep:1",
+                "trash",
+                {"photoUrl": "https://photos.google.com/photo/media-a"},
+                True,
+                not_after=2000,
+                retention_scope=scope,
+            )
+            claim = store.claim(worker["worker_id"])
+            store.progress(worker["worker_id"], job["id"], claim["lease"], "preflight")
+            store.finish(
+                worker["worker_id"], job["id"], claim["lease"], error="PROTOCOL"
+            )
+            self.assertTrue(
+                store.diagnostic("alice", job["id"])["job"]["retry_preflight_allowed"]
+            )
+            with self.assertRaises(ValueError):
+                store.retry_preflight("bob", job["id"])
+            store.retry_preflight("alice", job["id"])
+            again = store.claim(worker["worker_id"])
+            self.assertEqual(again["id"], job["id"])
+            self.assertEqual(again["attempt"], 2)
+            self.assertNotEqual(again["lease"], claim["lease"])
+            with store.db() as db:
+                self.assertEqual(
+                    db.execute(
+                        "SELECT error FROM preflight_retries WHERE job=?", (job["id"],)
+                    ).fetchone()[0],
+                    "PROTOCOL",
+                )
+            store.progress(worker["worker_id"], job["id"], again["lease"], "sending")
+            store.finish(
+                worker["worker_id"], job["id"], again["lease"], error="PROTOCOL"
+            )
+            self.assertFalse(
+                store.diagnostic("alice", job["id"])["job"]["retry_preflight_allowed"]
+            )
+            with self.assertRaises(ValueError):
+                store.retry_preflight("alice", job["id"])
+
+    def test_unknown_album_title_preserves_positive_membership_contract(self):
+        from photoflow_web.google_contracts import album
+
+        album(
+            {
+                "namespace": "album",
+                "albumId": "shared-a",
+                "title": None,
+                "itemCount": 3,
+                "shared": True,
+            }
+        )
+        with self.assertRaises(ValueError):
+            album(
+                {
+                    "namespace": "album",
+                    "albumId": "shared-a",
+                    "title": 12,
+                    "itemCount": 3,
+                    "shared": True,
+                }
+            )

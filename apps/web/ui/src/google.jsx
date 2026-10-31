@@ -193,6 +193,21 @@ export function GoogleConnection({ api }) {
                     View private result
                   </button>
                 )}
+                {job.retry_preflight_allowed && (
+                  <button
+                    onClick={() =>
+                      act(async () => {
+                        await call.current(
+                          `/google/jobs/${job.id}/retry-preflight`,
+                          "POST",
+                          {},
+                        );
+                      })
+                    }
+                  >
+                    Retry failed preflight
+                  </button>
+                )}
                 {job.error && ` (${job.error})`}
                 {job.events?.length > 0 && ` — ${job.events.at(-1).phase}`}
                 <button
