@@ -50,6 +50,12 @@ Login uses the separate PAM broker; the HTTP process is unprivileged. Linux grou
 `photoflow-readers`, `photoflow-editors`, and `photoflow-admins` grant increasing
 roles. `stefan` is an administrator on the installed server. Restart invalidates
 browser sessions. Credentials and session cookies are never stored in records.
+Web sessions persist across service restarts in the private state directory
+`auth-sessions/` (directory mode 0700, database mode 0600). Only hashed session
+tokens are stored, never passwords. The existing 30-minute idle and 12-hour total
+limits still apply. Each process rechecks an existing session's account with the
+authentication broker before accepting it; logout revocation survives restarts.
+The first upgrade from RAM-only sessions requires signing in again once.
 
 ## Operator commands
 

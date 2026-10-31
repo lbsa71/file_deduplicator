@@ -9,6 +9,7 @@ from .frontend import FrontendFiles
 from .core import Library, Conflict, atomic, digest, load
 from .media import Media
 from .workspace import Workspace
+from .auth_sessions import SessionStore, IDLE_SECONDS, MAX_SECONDS
 
 
 def create_app(root=None, state=None, auth=None, role_resolver=None, static_root=None):
@@ -18,7 +19,7 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
     )
     media = Media(library, library.state / "thumbnails")
     workspace = Workspace(library)
-    sessions = {}
+    sessions = SessionStore(library.state / "auth-sessions", clock=lambda: time.time())
     attempts = {}
     executor = concurrent.futures.ThreadPoolExecutor(1)
 
@@ -51,8 +52,8 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
         d = sessions.get(token)
         if (
             not d
-            or time.time() - d["last"] > 1800
-            or time.time() - d["created"] > 43200
+            or time.time() - d["last"] > IDLE_SECONDS
+            or time.time() - d["created"] > MAX_SECONDS
         ):
             raise HTTPException(401, "Login required")
         if time.time() - d["checked"] > 60:
@@ -66,6 +67,8 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
             d["checked"] = time.time()
         d["role"] = role(d["username"])
         d["last"] = time.time()
+        if not sessions.touch(token, d):
+            raise HTTPException(401, "Login required")
         if d["role"] < level:
             raise HTTPException(403, "Insufficient permission")
         if write:
@@ -257,7 +260,7 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
             raise HTTPException(401, "Login failed")
         token = secrets.token_urlsafe(32)
         csrf = secrets.token_urlsafe(32)
-        sessions[token] = {
+        sessions.create(token, {
             "username": name,
             "uid": result["uid"],
             "role": access,
@@ -265,7 +268,7 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
             "last": now,
             "created": now,
             "checked": now,
-        }
+        })
         response = JSONResponse({"username": name, "role": access, "csrf": csrf})
         response.set_cookie(
             "__Host-photoflow",
