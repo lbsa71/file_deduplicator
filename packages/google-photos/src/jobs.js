@@ -250,7 +250,7 @@ export function validateResult(kind, result, operation) {
     requireThat(Object.keys(result).length === 4, "Invalid quota");
     ["used", "total", "photosUsed"].forEach((k) => number(result[k]));
     requireThat(
-      result.photosUsed <= result.used && result.used <= result.total,
+      result.photosUsed <= result.used,
       "Invalid quota result",
     );
   } else if (kind === "matches") {

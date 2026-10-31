@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import math
 import json
 import re
 import secrets
@@ -61,7 +62,8 @@ class WorkerStore:
             db.executescript(
                 """CREATE TABLE IF NOT EXISTS pairing(code TEXT PRIMARY KEY,owner TEXT,account TEXT,expires REAL);
             CREATE TABLE IF NOT EXISTS workers(id TEXT PRIMARY KEY,owner TEXT UNIQUE,account TEXT UNIQUE,token TEXT,expires REAL,last_seen REAL,ready INTEGER);
-            CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner TEXT,worker TEXT,state TEXT,lease TEXT,started REAL,created REAL,result TEXT,error TEXT);"""
+            CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner TEXT,worker TEXT,state TEXT,lease TEXT,started REAL,created REAL,result TEXT,error TEXT);
+            CREATE TABLE IF NOT EXISTS job_requests(owner TEXT,request_key TEXT,job TEXT,PRIMARY KEY(owner,request_key));"""
             )
             for name, definition in [
                 ("operation", "TEXT NOT NULL DEFAULT 'inventory-counts'"),
@@ -72,6 +74,7 @@ class WorkerStore:
                 ("suite", "TEXT"),
                 ("version", "INTEGER NOT NULL DEFAULT 1"),
                 ("target_policy", "TEXT NOT NULL DEFAULT 'fixtures'"),
+                ("not_after", "REAL"),
             ]:
                 if name not in {
                     row[1] for row in db.execute("PRAGMA table_info(jobs)")
@@ -232,6 +235,64 @@ class WorkerStore:
                 db, owner, operation, {} if value is None else value, confirmed
             )
 
+    def enqueue_once(
+        self, owner, request_key, operation, value, confirmed=False, *, not_after=None
+    ):
+        """A stable intent survives acknowledgements, restarts and manifest polling."""
+        check(isinstance(request_key, str) and 0 < len(request_key) <= 160)
+        check(
+            not_after is None
+            or (type(not_after) in (int, float) and math.isfinite(not_after))
+        )
+        check(operation in JOB_SPECS)
+        spec = JOB_SPECS[operation]
+        spec["validate_input"](value)
+        normalized = {
+            **{k: None for k, v in spec["fields"].items() if v.endswith("?")},
+            **value,
+        }
+        with self.db() as db:
+            previous = db.execute(
+                "SELECT j.* FROM job_requests r JOIN jobs j ON j.id=r.job WHERE r.owner=? AND r.request_key=?",
+                (owner, request_key),
+            ).fetchone()
+            if previous:
+                check(
+                    previous["operation"] == operation
+                    and json.loads(previous["input"]) == normalized
+                    and previous["not_after"] == not_after
+                )
+                if (
+                    spec["effect"] == "read"
+                    and previous["state"] == "failed"
+                    and previous["error"] == "REPAIRED"
+                ):
+                    current = db.execute(
+                        "SELECT * FROM workers WHERE owner=? AND expires>?",
+                        (owner, self.now()),
+                    ).fetchone()
+                    if current and current["account"] == previous["account"]:
+                        db.execute(
+                            "UPDATE jobs SET worker=?,state='queued',lease=NULL,started=NULL,error=NULL WHERE id=?",
+                            (current["id"], previous["id"]),
+                        )
+                        previous = db.execute(
+                            "SELECT * FROM jobs WHERE id=?", (previous["id"],)
+                        ).fetchone()
+                return self.public_job(previous)
+            result = self._enqueue(
+                db, owner, operation, value, confirmed, suite="manifest:" + request_key
+            )
+            check(not_after is None or not_after > self.now())
+            db.execute(
+                "UPDATE jobs SET not_after=? WHERE id=?", (not_after, result["id"])
+            )
+            db.execute(
+                "INSERT INTO job_requests VALUES(?,?,?)",
+                (owner, request_key, result["id"]),
+            )
+            return result
+
     def suite(self, owner, jobs, confirmed=False):
         check(isinstance(jobs, list) and 1 <= len(jobs) <= 32)
         ident = secrets.token_hex(16)
@@ -269,6 +330,12 @@ class WorkerStore:
                 "SELECT rowid,* FROM jobs WHERE worker=? AND state='queued' ORDER BY rowid",
                 (worker,),
             ).fetchall():
+                if row["not_after"] is not None and row["not_after"] <= self.now():
+                    db.execute(
+                        "UPDATE jobs SET state='blocked',error='EXPIRED' WHERE id=?",
+                        (row["id"],),
+                    )
+                    continue
                 spec = JOB_SPECS.get(row["operation"])
                 check(spec and row["version"] == spec["version"])
                 if spec["effect"] == "write":
@@ -323,7 +390,10 @@ class WorkerStore:
                         "account": row["account"],
                         "operation": row["operation"],
                         "jobId": row["id"],
-                        "expiresAt": int((self.now() + 900) * 1000),
+                        "expiresAt": int(
+                            min(self.now() + 900, row["not_after"] or self.now() + 900)
+                            * 1000
+                        ),
                         "photoKey": (
                             photo_key(value["photoUrl"])
                             if value.get("photoUrl")
@@ -400,7 +470,11 @@ class WorkerStore:
             if error is None:
                 JOB_SPECS[row["operation"]]["validate_result"](result)
                 value = json.loads(row["input"])
-                if row["operation"] in ("photo-details", "download-link", "download-original"):
+                if row["operation"] in (
+                    "photo-details",
+                    "download-link",
+                    "download-original",
+                ):
                     key = (
                         result["photo"]["mediaKey"]
                         if row["operation"] == "photo-details"
@@ -599,6 +673,7 @@ def install_worker_routes(
 ):
     from .google_downloads import OriginalImporter
     from .core import load
+
     importer = OriginalImporter(library)
     app.state.google_originals = importer
     store = WorkerStore(
@@ -620,6 +695,8 @@ def install_worker_routes(
         for event in active.values():
             event.set()
 
+    app.state.google_worker_wake = wake
+
     @app.post("/api/v1/google/originals/{ident}")
     async def import_original(ident: str, req: Request):
         check(extension(req.headers.get("origin")))
@@ -628,27 +705,52 @@ def install_worker_routes(
             raw.extend(part)
             check(len(raw) <= 128 * 1024)
         body = json.loads(raw)
-        check(isinstance(body, dict) and set(body) == {"photo", "url", "account", "lease"})
+        check(
+            isinstance(body, dict) and set(body) == {"photo", "url", "account", "lease"}
+        )
         auth = req.headers.get("authorization", "")
         check(auth.startswith("Bearer "))
         token = auth[7:]
+
         def active():
             worker = store.authenticate(token, body["account"])
             check(authorized(worker["owner"]))
             with store.db() as db:
-                row = db.execute("SELECT * FROM jobs WHERE id=? AND worker=?", (ident, worker["id"])).fetchone()
-            check(row and row["operation"] == "download-original" and row["state"] == "running"
-                  and row["lease"] == body["lease"] and row["started"] > store.now() - 600)
-            check(body["photo"]["mediaKey"] == photo_key(json.loads(row["input"])["photoUrl"]))
+                row = db.execute(
+                    "SELECT * FROM jobs WHERE id=? AND worker=?", (ident, worker["id"])
+                ).fetchone()
+            check(
+                row
+                and row["operation"] == "download-original"
+                and row["state"] == "running"
+                and row["lease"] == body["lease"]
+                and row["started"] > store.now() - 600
+            )
+            check(
+                body["photo"]["mediaKey"]
+                == photo_key(json.loads(row["input"])["photoUrl"])
+            )
             return worker
-        JOB_SPECS["photo-details"]["validate_result"]({"photo": body["photo"], "retentionReady": False})
+
+        JOB_SPECS["photo-details"]["validate_result"](
+            {"photo": body["photo"], "retentionReady": False}
+        )
         worker = active()
         try:
-            return await asyncio.to_thread(importer.import_one, worker["owner"], body["account"], ident,
-                                           body["photo"], body["url"], active)
+            return await asyncio.to_thread(
+                importer.import_one,
+                worker["owner"],
+                body["account"],
+                ident,
+                body["photo"],
+                body["url"],
+                active,
+            )
         except (ValueError, OSError) as error:
             reasons = {
-                "GOOGLE_AUTH_REQUIRED": "GOOGLE_AUTH_REQUIRED", "GOOGLE_REDIRECT": "GOOGLE_REDIRECT", "GOOGLE_HTTP": "GOOGLE_HTTP",
+                "GOOGLE_AUTH_REQUIRED": "GOOGLE_AUTH_REQUIRED",
+                "GOOGLE_REDIRECT": "GOOGLE_REDIRECT",
+                "GOOGLE_HTTP": "GOOGLE_HTTP",
                 "Original transport failed": "DOWNLOAD_TRANSPORT",
                 "Original byte size disagrees with Google details": "DOWNLOAD_SIZE",
                 "Original image format disagrees with metadata": "DOWNLOAD_FORMAT",
@@ -657,7 +759,9 @@ def install_worker_routes(
                 "Invalid original archive": "ZIP_INVALID",
             }
             code = reasons.get(str(error), "ORIGINAL_VALIDATION")
-            __import__("logging").getLogger("photoflow.google_downloads").warning("Original transfer stopped: %s", code)
+            __import__("logging").getLogger("photoflow.google_downloads").warning(
+                "Original transfer stopped: %s", code
+            )
             raise HTTPException(400, {"code": code}) from None
 
     @app.get("/api/v1/google/status")
@@ -667,14 +771,22 @@ def install_worker_routes(
     @app.post("/api/v1/google/local-matches")
     async def local_matches(req: Request, body: dict):
         from .google_identity import LocalGoogleMatches
+
         owner = session(req, 3, True)["username"]
         check(set(body) == {"account", "photoUrls"})
         check(isinstance(body["photoUrls"], list) and 0 < len(body["photoUrls"]) <= 100)
         account = store.status(owner)["account"]
         if not account or body["account"] != account:
-            raise HTTPException(409, "Refresh the paired Google account before checking local originals")
-        targets = [{"namespace": "library-media", "mediaKey": photo_key(url)} for url in body["photoUrls"]]
-        result = await asyncio.to_thread(LocalGoogleMatches(library).check, account, targets)
+            raise HTTPException(
+                409, "Refresh the paired Google account before checking local originals"
+            )
+        targets = [
+            {"namespace": "library-media", "mediaKey": photo_key(url)}
+            for url in body["photoUrls"]
+        ]
+        result = await asyncio.to_thread(
+            LocalGoogleMatches(library).check, account, targets
+        )
         session(req, 3, True)
         if store.status(owner)["account"] != account:
             raise HTTPException(409, "Google account changed during verification")

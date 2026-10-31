@@ -13,7 +13,7 @@ mutation phase. Publication is a later phase with a separate capacity check.
 Inventory and identity/preservation verification
   -> freeze and review cleanup/publication plan
   -> execute eligible cloud cleanup and verify outcomes
-  -> refresh quota; wait until sufficient headroom is observed
+  -> refresh quota; use existing headroom or defer uploads to another run
   -> publish selected new local images, verifying each outcome
   -> await and reconcile manually imported Takeout metadata
 ```
@@ -38,8 +38,9 @@ credit. Report estimated savings separately from actual observed free space.
 
 The existing implementation permits reversible trash pilots and has no permanent
 delete/empty-trash capability. This ordering decision does not introduce one.
-If Trash has not released space, the run waits for provider expiry or a separate,
-explicit operator action and subsequent quota refresh. Never empty the entire
+If sufficient space already exists, uploads proceed without waiting for reclaimed
+space. Otherwise the run records deferred uploads and ends; a later run can observe
+capacity after provider expiry or a separate explicit operator action. Never empty the entire
 account's Trash to unblock uploads: it may contain unrelated items. A future
 targeted permanent-delete integration would require its own explicit authorization,
 finite exact-target plan, preservation evidence, implementation and qualification.
@@ -56,8 +57,8 @@ finite exact-target plan, preservation evidence, implementation and qualificatio
   a new reviewed plan rather than silently falling through to uploads.
 - After cleanup completes, read account quota afresh. Uploads need verified
   headroom for their bounded batch plus a configured reserve. Missing, stale or
-  insufficient capacity yields a durable `waiting-for-quota` state, not a failed
-  upload loop. Reserve/batch accounting is prospective; do not assume deleting a
+  insufficient capacity records deferred upload outcomes for a later run and ends
+  this run. It does not poll for quota changes or hold the worker open. Reserve/batch accounting is prospective; do not assume deleting a
   file released its local byte size.
 - Google storage is shared with other services and may change outside PhotoFlow.
   Recheck capacity before subsequent upload batches. If Google rejects a transfer
@@ -66,7 +67,8 @@ finite exact-target plan, preservation evidence, implementation and qualificatio
 - Persist phase, completed cleanup IDs, quota observation time/values and upload
   receipts. Browser sleep, process restart or a later scheduled pass resumes the
   gate without repeating verified cleanup or completed/uncertain uploads. Use
-  bounded, delayed refreshes; do not keep an interactive worker waiting for days.
+  a fresh observation in a later run for quota deferrals; do not automatically
+  retry or poll this completed run merely because storage was full.
 - Newly published images remain protected while awaiting matched Takeout metadata.
   They are not fed back into cleanup during this frozen run. Reevaluate them only
   in a later run using the normal retention policy and fresh evidence.
@@ -75,18 +77,20 @@ finite exact-target plan, preservation evidence, implementation and qualificatio
 
 1. With both cleanup and upload candidates, no upload is dispatched before eligible
    cleanup completes and quota is refreshed.
-2. Successful trash with unchanged quota leaves the run waiting when capacity is
-   insufficient; it sends no upload and no permanent-delete request.
-3. If quota later becomes sufficient, resume uploads without repeating cleanup.
+2. Successful trash with unchanged quota still permits uploads if existing
+   capacity is sufficient. Otherwise it records deferrals and ends without an
+   upload or permanent-delete request.
+3. If quota becomes sufficient in a later run, publish still-pending images
+   without repeating verified cleanup or already-completed uploads.
 4. Cleanup failure/unknown outcome, unknown quota and account/revision changes
    prevent dependent uploads until resolved or replanned.
 5. Zero cleanup candidates and sufficient observed capacity allow publication;
-   zero candidates and insufficient capacity remain waiting with an explanation.
+   zero candidates and insufficient capacity produce explained deferrals.
 6. Items that do not consume quota never contribute assumed reclaimed bytes.
    No additional protected items are selected to make an upload batch fit.
 7. Conflicting delete/upload intents for proved identical content are rejected or
    resolved by retention/publication policy before execution.
-8. Restart during quota waiting, lost upload acknowledgements and repeated Takeout
+8. Restart, completed quota deferrals, lost upload acknowledgements and repeated Takeout
    imports do not cause duplicate cleanup, repeated uploads or premature deletion.
 
 This specifies the ordering for the reconciliation coordinator still to be built;

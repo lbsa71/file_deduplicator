@@ -1,6 +1,6 @@
 """Authenticated HTTP application; all library writes use the common coordinator."""
 
-import concurrent.futures, grp, hashlib, json, os, pwd, secrets, socket, sqlite3, threading, time, uuid
+import asyncio, concurrent.futures, grp, hashlib, json, os, pwd, secrets, socket, sqlite3, threading, time, uuid
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
@@ -175,6 +175,7 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
 
     @asynccontextmanager
     async def lifespan(app):
+        app.state.event_loop = asyncio.get_running_loop()
         with library.writer():
             pass
         library.rebuild()
@@ -195,9 +196,11 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
 
         watcher = Reconciler(library, lambda: job("system", "scan", scan))
         watcher.start()
+        app.state.google_reconciliation.runner.start()
         try:
             yield
         finally:
+            app.state.google_reconciliation.close()
             watcher.close()
 
     app = FastAPI(title="PhotoFlow Web", lifespan=lifespan)
@@ -757,6 +760,10 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
         pilot_account=os.environ.get("PHOTOFLOW_GOOGLE_PILOT_ACCOUNT", os.environ.get("PHOTOFLOW_GOOGLE_TEST_ACCOUNT", "")),
         target_policy=os.environ.get("PHOTOFLOW_GOOGLE_PILOT_TARGET_POLICY", "fixtures"),
     )
+
+    from .google_reconciliation import install_reconciliation_routes
+    install_reconciliation_routes(app, library, app.state.google_workers, session,
+        lambda owner: role(owner) >= 3, app.state.google_worker_wake)
 
     static = Path(static_root) if static_root else Path(__file__).parent / "static"
     if static.exists():

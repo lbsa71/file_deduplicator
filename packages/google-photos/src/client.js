@@ -146,7 +146,7 @@ export class GooglePhotosClient {
       [row[0], row[1], row[3]].every((v) => Number.isSafeInteger(v) && v >= 0),
       "Unknown storage quota",
     );
-    requireThat(row[0] <= row[1] && row[3] <= row[0], "Invalid storage quota");
+    requireThat(row[3] <= row[0], "Invalid storage quota");
     return { used: row[0], total: row[1], photosUsed: row[3] };
   }
   async downloadLink(mediaKey) {

@@ -21,8 +21,13 @@ class Stopping(Exception):
 
 
 class Deferred(Exception):
-    def __init__(self, reason):
-        self.reason = reason
+    def __init__(self, reason, retry_after=1):
+        self.reason, self.retry_after = reason, retry_after
+
+
+class PartialResult(Exception):
+    def __init__(self, result):
+        self.result = result
 
 
 class ReconciliationRequired(Exception):
@@ -333,9 +338,11 @@ class JobCoordinator:
         except Cancelled:
             self.store.update(job["id"], state="cancelled", finished=self.store.clock(),
                               result={"completed_steps": self.store.completed_steps(job["id"])})
+        except PartialResult as error:
+            self.store.update(job["id"], state="partial", result=error.result, finished=self.store.clock())
         except (Deferred, Stopping) as error:
             reason = error.reason if isinstance(error, Deferred) else "service_stopping"
-            self.store.update(job["id"], state="queued", waiting_reason=reason, available=self.store.clock()+1)
+            self.store.update(job["id"], state="queued", waiting_reason=reason, available=self.store.clock()+getattr(error, "retry_after", 1))
         except Exception as error:
             code = ("AUTHORITY_REVOKED" if isinstance(error, PermissionError) else
                     "RECONCILIATION_REQUIRED" if isinstance(error, ReconciliationRequired) else

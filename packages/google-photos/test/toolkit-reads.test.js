@@ -73,3 +73,12 @@ test("malformed manual location cannot become proof that location was cleared", 
     await assert.rejects(reader.observation("media-a"));
   }
 });
+
+test("over-quota accounts are valid observations and must defer uploads rather than break inventory", async () => {
+  const row = Array(7).fill(null);
+  row[6] = [120, 100, null, 80];
+  const result = await client("EzwWhf", row).quota();
+  assert.equal(result.used, 120);
+  const { JOBS } = await import("../src/jobs.js");
+  JOBS["storage-quota"].validateResult({ ...result, retentionReady: false });
+});

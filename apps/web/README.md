@@ -326,10 +326,10 @@ merely because its associated image has moved.
 ## Google Photos desktop worker
 
 Administrators now have a Google Photos connection control in the header. Install
-[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.3.1.zip)
+[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.4.0.zip)
 as an unpacked Chrome/Edge extension. Choose the folder containing manifest.json;
 source installation is deliberately disabled. Existing installations must rebuild
-and manually reload their unpacked extension. Version 0.3.1 uses job protocol 2 and must be loaded alongside the updated server;
+and manually reload their unpacked extension. Version 0.4.0 uses job protocol 2 and must be loaded alongside the updated server;
 pairing requests access to the configured HTTPS endpoint when needed.
 
 Open Google Photos, use Check connection, and copy its account value into the
@@ -379,3 +379,31 @@ extension profile, using the configurable localhost endpoint. Set
 `PHOTOFLOW_TEST_PILOT_POLICY=selected` to test the selected-target policy against
 synthetic personal-style fixtures. All Google responses are synthetic. It neither
 opens nor modifies the real library.
+
+## Reconciliation preparation and commit
+
+In the Google connection panel, open **Prepare and commit reconciliation**. Leave
+photo URLs empty for a complete read-only inventory/manifest, or select up to 100
+explicit URLs for a bounded preservation/qualification plan. Preparation is durable
+and may remain queued while the paired desktop is offline.
+
+When ready, inspect/download the private manifest. It lists ordered operations,
+local revisions, read-evidence digests, reasons and held items. Select the review
+confirmation and **Commit reviewed manifest** to execute exactly its hash-bound
+sequence. Existing capacity is immediately usable after cleanup; insufficient
+quota produces deferrals for a later run, without actively waiting for space.
+
+The non-vital checkbox permits a finite exact-target Trash pilot under the account
+allowlist from ADR 0006. Preparation itself does not trash/import/change photos.
+Commit can verify/import selected originals and reuse existing identical bytes.
+Production retention candidates and unproved publication remain held. The deployed
+application has no qualified image publisher; upload scheduling is tested through
+an injected port, not presented as working live uploads. See
+[ADR 0008](spec/adr/0008-reconciliation-manifests.md) for the API, recovery contract
+and full limits.
+
+State is private under `PHOTOFLOW_STATE/google-reconciliation/`: immutable JSON
+manifests plus `operations.sqlite`. Preserve it and the Google worker/browser
+journals when backing up or migrating. These files contain private identifiers.
+Extension 0.4.0 is the coherent release for the expanded 23-operation worker and
+page pairing; manually reload the built extension after updating.

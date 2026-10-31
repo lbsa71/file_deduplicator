@@ -1,3 +1,4 @@
+import { GoogleReconciliation } from "./google-reconciliation.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { GoogleJobConsole } from "./google-job-console.jsx";
 import { pairWithExtension } from "./google-pairing.js";
@@ -64,7 +65,7 @@ export function GoogleConnection({ api }) {
           </p>
           <p>
             Install the{" "}
-            <a href="/tools/google-photos-worker-0.3.1.zip">
+            <a href="/tools/google-photos-worker-0.4.0.zip">
               PhotoFlow extension
             </a>{" "}
             in Chrome or Edge. Open Google Photos and use its Check connection
@@ -155,6 +156,11 @@ export function GoogleConnection({ api }) {
           >
             Disconnect Google worker
           </button>
+          <GoogleReconciliation
+            call={(...args) => call.current(...args)}
+            account={status?.account}
+            targetPolicy={status?.pilotTargetPolicy}
+          />
           <GoogleJobConsole
             operations={status?.operations || []}
             targetPolicy={status?.pilotTargetPolicy || "fixtures"}

@@ -268,3 +268,83 @@ class WorkerHTTPTests(unittest.TestCase):
         import json
 
         self.assertNotIn("private-google-a", json.dumps(report))
+
+
+class StableWorkerRequestTests(unittest.TestCase):
+    def test_request_key_survives_completion_and_cannot_describe_another_intent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = WorkerStore(directory)
+            pair = store.pair(store.pairing("alice", "a")["code"], "a")
+            first = store.enqueue_once(
+                "alice", "manifest:operation", "storage-quota", {}
+            )
+            claimed = store.claim(pair["worker_id"])
+            result = {"used": 1, "total": 100, "photosUsed": 1, "retentionReady": False}
+            store.finish(pair["worker_id"], claimed["id"], claimed["lease"], result)
+            self.assertEqual(
+                store.enqueue_once("alice", "manifest:operation", "storage-quota", {})[
+                    "id"
+                ],
+                first["id"],
+            )
+            with self.assertRaises(ValueError):
+                store.enqueue_once("alice", "manifest:operation", "library-page", {})
+
+
+class ManifestDeadlineTests(unittest.TestCase):
+    def test_an_expired_queued_manifest_cannot_dispatch_a_write_later(self):
+        with tempfile.TemporaryDirectory() as directory:
+            now = [1000]
+            store = WorkerStore(
+                directory,
+                now=lambda: now[0],
+                pilot_account="a",
+                target_policy="selected",
+            )
+            worker = store.pair(store.pairing("alice", "a")["code"], "a")
+            job = store.enqueue_once(
+                "alice",
+                "manifest:cleanup",
+                "trash",
+                {"photoUrl": "https://photos.google.com/photo/a"},
+                True,
+                not_after=1001,
+            )
+            now[0] = 1002
+            self.assertIsNone(store.claim(worker["worker_id"]))
+            self.assertEqual(
+                store.diagnostic("alice", job["id"])["job"]["state"], "blocked"
+            )
+            self.assertEqual(
+                store.diagnostic("alice", job["id"])["job"]["error"], "EXPIRED"
+            )
+
+
+class ManifestReadRepairTests(unittest.TestCase):
+    def test_same_account_repair_can_resume_a_read_but_never_an_old_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = WorkerStore(directory, pilot_account="a", target_policy="selected")
+            first = store.pair(store.pairing("alice", "a")["code"], "a")
+            read = store.enqueue_once("alice", "read-key", "library-page", {})
+            write = store.enqueue_once(
+                "alice",
+                "write-key",
+                "trash",
+                {"photoUrl": "https://photos.google.com/photo/a"},
+                True,
+            )
+            second = store.pair(store.pairing("alice", "a")["code"], "a")
+            resumed = store.enqueue_once("alice", "read-key", "library-page", {})
+            self.assertEqual(resumed["id"], read["id"])
+            self.assertEqual(resumed["state"], "queued")
+            self.assertEqual(store.claim(second["worker_id"])["id"], read["id"])
+            self.assertEqual(
+                store.enqueue_once(
+                    "alice",
+                    "write-key",
+                    "trash",
+                    {"photoUrl": "https://photos.google.com/photo/a"},
+                    True,
+                )["state"],
+                "failed",
+            )

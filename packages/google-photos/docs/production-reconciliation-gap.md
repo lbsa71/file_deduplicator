@@ -4,6 +4,16 @@ Assessment date: 2026-10-31. Repository reviewed at `afbd21a`, after fast-forwar
 main from `8a7680c`. This is an assessment, not authorization to execute a new cloud
 cleanup plan. No deployment or live Google mutation was performed for this audit.
 
+## Implementation update
+
+ADR 0008 now implements durable preparation, immutable inspectable manifests and
+hash-bound sequential commit, plus selected-original verification/import and
+explicit non-vital Trash pilots. It accounts for all inventory and local records
+conservatively; unproved production retention and publication remain held. Quota
+full/over-limit results defer publication to a later run, without active waiting.
+The assessment below describes the original baseline and the remaining full-loop
+gaps; this update does not claim a qualified live uploader or automatic retention.
+
 ## Conclusion and definition of done
 
 The other session completed a valuable read-side vertical slice: live download of
@@ -64,7 +74,8 @@ media identifiers, URLs or content hashes are included.
 Execution order is governed by ADR 0007: preflight and a frozen plan, verified
 cleanup of eligible existing cloud items, observed quota headroom, then new local
 publication. Successful trash does not imply reclaimed storage. A persistent
-quota-wait gate is required while automatic permanent deletion remains absent.
+quota gate is required while automatic permanent deletion remains absent. Existing
+headroom is immediately usable; insufficient capacity defers uploads to another run.
 
 | Area | What exists | What a production reconciliation PoC still needs |
 | --- | --- | --- |
@@ -133,7 +144,7 @@ hashing budget and a maximum of 100 targets, which a run coordinator must respec
    ambiguous metadata, duplicate occurrence and fully eligible cleanup candidate.
    Review the frozen plan and execute eligible existing cleanup first, one mutation
    at a time. Demonstrate trash/restore qualification separately from quota release;
-   refresh capacity before publication and persist waiting if it is insufficient.
+   refresh capacity before publication and record deferrals for another run if it is insufficient.
    Verify outcomes and untouched controls, interrupt/restart and rerun to
    convergence. Retain unsupported/unknown cases with explicit reasons.
 5. **Expand coverage and volume.** Add larger/HEIC/companion handling and needed

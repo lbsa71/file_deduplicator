@@ -222,7 +222,7 @@ def validate_result(operation, spec, result):
         check(set(result) == {"used", "total", "photosUsed", "retentionReady"})
         for key in ["used", "total", "photosUsed"]:
             integer(result[key], 0, 9007199254740991)
-        check(result["photosUsed"] <= result["used"] <= result["total"])
+        check(result["photosUsed"] <= result["used"])
     elif kind == "matches":
         check(
             set(result) == {"items", "absenceProven", "retentionReady"}

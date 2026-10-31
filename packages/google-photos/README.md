@@ -311,7 +311,7 @@ read; check status before starting another operation.
 This probe has synthetic browser coverage. Live selected-album/photo qualification
 must still be performed and reported separately.
 
-## Desktop job worker (0.3.1 / protocol 2)
+## Desktop job worker (0.4.0 / protocol 2)
 
 The extension now pairs with PhotoFlow and opens an outbound WSS connection.
 The versioned catalogue registers 23 typed jobs: inventory and bounded pages,
@@ -379,3 +379,22 @@ build the web frontend and extension first, and install Chromium. This test uses
 only synthetic Google responses, including every job type and a lost write
 acknowledgement resolved without replay. Native Windows needs a configured Python/OpenSSL
 environment; the Linux FileJournal contract remains unchanged.
+
+
+## Reconciliation preparation and commit
+
+PhotoFlow now exposes a durable preparation/manifest/commit workflow through its
+Google connection panel. The server records all read inventory and local candidate
+revisions, publishes a private immutable SHA-256-bound manifest, and executes only
+the reviewed operation sequence. Stable worker request keys and dispatch deadlines
+prevent duplicated or expired manifest writes after a restart.
+
+A selected non-vital pilot may include an exact-target Trash operation. Other
+production retention candidates remain held until their evidence is qualified.
+Selected supported originals can be verified/imported, including reusing existing
+Takeout-backed bytes. Full accounts defer uploads to another run; existing free
+space is usable immediately. The actual application still has no qualified image
+publisher, so arbitrary publication remains held. See
+[ADR 0008](../../apps/web/spec/adr/0008-reconciliation-manifests.md) for the complete
+contract and limits. The browser smoke exercises both preparation without writes
+and subsequent hash-bound commit against simulated Google traffic.

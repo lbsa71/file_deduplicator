@@ -8,13 +8,20 @@ integration designs. Existing milestones below provide historical evidence;
 completion requires current implementation and verification. This is a backlog,
 not a claim that the full service is complete or an active autonomous work goal.
 
+Reconciliation update: immutable preparation manifests and a hash-bound sequential
+commit API/UI are now implemented with durable read/operation receipts. Selected
+non-vital Trash pilots and original verification/import are executable; arbitrary
+production cleanup and image publication remain held pending qualified evidence
+and a real publisher adapter. See [ADR 0008](apps/web/spec/adr/0008-reconciliation-manifests.md).
+
 The [production Google reconciliation gap assessment](packages/google-photos/docs/production-reconciliation-gap.md)
 records the latest Linux checks, deployed-versus-repository differences, real
 library coverage and the remaining end-to-end proof-of-concept milestones.
 Execution must follow [ADR 0007](apps/web/spec/adr/0007-cleanup-before-publication.md):
 after inventory and verification, process eligible Google cleanup first, verify
-available quota, then upload new local images. Persist quota waiting and resume
-without repeating writes; successful trash alone is not proof of available space.
+available quota, then upload new local images. Record full-account uploads as deferred for another run; do not wait for quota
+reclamation when existing headroom suffices. Successful trash alone is not proof
+of available space.
 
 | Area | Current evidence / remaining work |
 | --- | --- |
@@ -44,9 +51,10 @@ authenticated rendering produced 64/256/512/1024/2048 bounds (768/6,850/24,582/
 301,586-byte original retained its SHA-256. These are one-image functional checks,
 not proof of the full format or performance acceptance matrix. Account-bound local
 original checks now rehash mapped files, distinguish uncertain results, and rebuild
-their index from portable sidecars. The durable operation store and coordinator
-have tests but remain unwired into the running app; restart behavior,
-cancellation/retry and events remain a future integration slice.
+their index from portable sidecars. The durable operation store and coordinator now back reconciliation preparation
+and commit, with immutable manifests and stable remote request receipts. Existing
+scan/export jobs still use the legacy executor; their general migration remains
+a future integration slice.
 
 This plan distills the *Fotohantering* conversation. Later decisions supersede
 earlier sketches: one finite batch command, no database, adjacent JSON records,

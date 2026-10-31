@@ -342,6 +342,91 @@ try {
     30,
     "local checks must not queue Google jobs",
   );
+  // Exercise preparation/inspection/hash-bound commit through the actual UI.
+  // The fixture asset is explicitly expendable; no real Google traffic is sent.
+  fixture.state.favorite = false;
+  await ui
+    .getByText("Prepare and commit reconciliation", { exact: true })
+    .click();
+  await ui
+    .getByLabel("Reconciliation photo URLs", { exact: true })
+    .fill("https://photos.google.com/photo/media-a");
+  if (targetPolicy === "selected")
+    await ui
+      .getByText(
+        "I confirm the selected photos are non-vital and authorize a Trash pilot.",
+        { exact: true },
+      )
+      .click();
+  const beforePrepare = fixture.state.writes.length;
+  await ui
+    .getByRole("button", { name: "Prepare dry-run manifest", exact: true })
+    .click();
+  await ui
+    .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+    .first()
+    .waitFor({ timeout: 90000 });
+  assert.equal(
+    fixture.state.writes.length,
+    beforePrepare,
+    "Preparation must not mutate Google",
+  );
+  await ui
+    .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+    .first()
+    .click();
+  const preview = ui.getByRole("region", {
+    name: "Prepared reconciliation manifest",
+  });
+  const manifestText = await preview.locator("p").first().textContent();
+  const manifestId = manifestText.match(/Manifest ([a-f0-9]{32})/)[1];
+  const [manifestDownload] = await Promise.all([
+    ui.waitForEvent("download"),
+    preview
+      .getByRole("button", {
+        name: "Download full private manifest",
+        exact: true,
+      })
+      .click(),
+  ]);
+  const downloadedManifest = await readFile(
+    await manifestDownload.path(),
+    "utf8",
+  );
+  const authoritativeManifest = await ui.evaluate(
+    async (id) =>
+      (
+        await fetch(
+          "/api/v1/google/reconciliation/manifests/" + id + "/download",
+        )
+      ).text(),
+    manifestId,
+  );
+  assert.equal(
+    downloadedManifest,
+    authoritativeManifest,
+    "Manifest download must preserve original bytes and large timestamps",
+  );
+
+  await preview
+    .getByText(
+      "I reviewed this manifest and authorize its listed executable operations.",
+      { exact: true },
+    )
+    .click();
+  await preview
+    .getByRole("button", { name: "Commit reviewed manifest", exact: true })
+    .click();
+  await ui
+    .locator(".google-reconciliation li")
+    .filter({ hasText: "google.commit: succeeded" })
+    .waitFor({ timeout: 60000 });
+  assert.equal(fixture.state.trashed, targetPolicy === "selected");
+  assert.equal(
+    fixture.state.writes.length,
+    beforePrepare + (targetPolicy === "selected" ? 1 : 0),
+  );
+  const completedJobs = await ui.locator(".google-panel ol>li").count();
   console.log(
     JSON.stringify({
       targetPolicy,
@@ -349,7 +434,10 @@ try {
       pagePairing: true,
       failedPairingPreservesEndpoint: true,
       wss: true,
-      jobsCompleted: 30,
+      jobsCompleted: completedJobs,
+      dryRunManifestAndCommit: true,
+      preparationDidNotMutateGoogle: true,
+      manifestDownloadExactBytes: true,
       fixtureOperationTypes: 23,
       directOriginalImport: true,
       duplicateOriginalSkipped: true,
