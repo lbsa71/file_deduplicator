@@ -177,9 +177,32 @@ larger checks remain deferred or ambiguous. The UI checks one selected photo.
 This makes no Google requests and never treats a saved Google ID as proof of current
 remote byte equality, complete backup, or cloud retention eligibility.
 
+**Prepare read-only reconciliation review** captures fresh Google details for the
+selected photo, verifies mapped local bytes, and saves a dated report under
+`.photoflow/google-reconciliation/`. Administrators can reopen saved reviews after
+reload/restart. The API accepts 1–20 explicit library photo URLs; the workbench
+selects one. Each target creates only a `photo-details` read. Selection is persisted
+before enqueueing; interrupted setup binds back to the same jobs. Refreshing local
+verification does not issue another Google read. Create a new review to obtain new
+remote observations; freshness expires ten minutes after each read started.
+
+These reports freeze account, library, target IDs, job provenance, observed times,
+local SHA-256 and sidecar revisions. Failures, unknown fields, stale observations
+and changed local content remain explicit. Completed observations survive loss of
+the worker database; pending jobs without evidence become unavailable. Reports are
+private owner/account-bound files and must be backed up with the library. Storage
+is bounded to 200 reviews per library; no automatic review deletion is implemented.
+The report lists unverified remote byte equality, Takeout round trip, independent
+backup, companion preservation, album intent, ownership and full inventory as
+remaining evidence. A selected-photo report never claims full-account completeness,
+retention eligibility or authorization for a cloud mutation. It is preparation for
+the reconciliation planner, not an executable plan.
+
 The worker smoke test covers rejected-code diagnostics, endpoint persistence,
 page-based pairing, WSS, all typed jobs, and account-bound local verification using
-synthetic Google responses.
+synthetic Google responses. It also captures and reopens a reconciliation review
+after browser reload, refreshes local evidence, and verifies that no Google write
+was issued by the review.
 It uses port 8100 alongside development on 8099. Set
 `PHOTOFLOW_TEST_PAGE_TLS_ONLY=1` only to reproduce background TLS failures with its
 untrusted disposable certificate; that diagnostic negative test is expected to fail.

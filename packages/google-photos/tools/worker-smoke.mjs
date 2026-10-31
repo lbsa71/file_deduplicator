@@ -342,6 +342,75 @@ try {
     30,
     "local checks must not queue Google jobs",
   );
+  const writesBeforeReview = fixture.state.writes.length;
+  await ui
+    .getByLabel("Selected library photo URL", { exact: true })
+    .fill("https://photos.google.com/photo/media-a");
+  await ui
+    .getByRole("button", {
+      name: "Prepare read-only reconciliation review",
+      exact: true,
+    })
+    .click();
+  let reviewPanel = ui.getByRole("region", {
+    name: "Reconciliation review",
+    exact: true,
+  });
+  await reviewPanel.getByText("Review captured", { exact: true }).waitFor();
+  await reviewPanel
+    .getByText("Local original verified", { exact: true })
+    .waitFor();
+  assert.equal(
+    await reviewPanel
+      .getByRole("link", { name: "Open reviewed local original" })
+      .getAttribute("href"),
+    `/photos/${imported[0].recordId}`,
+  );
+  await ui.reload();
+  await ui.locator(".google-connection > button").click();
+  await ui
+    .getByText("Operation workbench and qualification suite", { exact: true })
+    .click();
+  reviewPanel = ui.getByRole("region", {
+    name: "Reconciliation review",
+    exact: true,
+  });
+  await reviewPanel.getByText("Review captured", { exact: true }).waitFor();
+  await reviewPanel
+    .getByRole("button", { name: "Refresh local verification", exact: true })
+    .click();
+  await reviewPanel
+    .getByText("Local original verified", { exact: true })
+    .waitFor();
+  assert.equal(await ui.locator(".google-panel ol>li").count(), 31);
+  assert.equal(
+    fixture.state.writes.length,
+    writesBeforeReview,
+    "review must never issue Google writes",
+  );
+  await ui
+    .getByRole("button", { name: "Start full Google inventory", exact: true })
+    .click();
+  const inventoryPanel = ui.getByRole("region", {
+    name: "Full Google inventory",
+    exact: true,
+  });
+  await inventoryPanel
+    .getByText("Inventory complete", { exact: true })
+    .waitFor({ timeout: 30000 });
+  assert.equal(
+    fixture.state.writes.length,
+    writesBeforeReview,
+    "inventory is strictly read-only",
+  );
+  const inventorySummary = await inventoryPanel.locator("pre").textContent();
+  const captured = JSON.parse(inventorySummary);
+  assert.equal(captured.complete, true);
+  assert.equal(captured.counts.library, 2);
+  assert.equal(captured.counts.favorites, 1 + Number(fixture.state.favorite));
+  assert.equal(captured.counts.albums, fixture.state.albums.length);
+  assert.equal(captured.counts.albumMembers, fixture.state.albums.length);
+  assert.equal(captured.retentionReady, false);
   console.log(
     JSON.stringify({
       targetPolicy,
@@ -349,11 +418,13 @@ try {
       pagePairing: true,
       failedPairingPreservesEndpoint: true,
       wss: true,
-      jobsCompleted: 30,
+      jobsCompleted: 31 + captured.pages,
       fixtureOperationTypes: 23,
       directOriginalImport: true,
       duplicateOriginalSkipped: true,
       accountBoundLocalVerification: true,
+      durableReadOnlyReconciliationReview: true,
+      completeBackgroundInventory: true,
       lostWriteReconciledWithoutReplay: true,
       googleRequests: fixture.calls,
       phases: true,

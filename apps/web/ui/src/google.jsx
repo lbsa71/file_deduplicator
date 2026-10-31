@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { GoogleJobConsole } from "./google-job-console.jsx";
 import { pairWithExtension } from "./google-pairing.js";
+import { GoogleInventory } from "./google-inventory.jsx";
 const labels = {
   unpaired: "Connect Google Photos",
   offline: "Google browser offline",
@@ -155,6 +156,13 @@ export function GoogleConnection({ api }) {
           >
             Disconnect Google worker
           </button>
+          <GoogleInventory
+            key={status?.account || "unpaired"}
+            account={status?.account}
+            busy={busy}
+            act={act}
+            call={(...args) => call.current(...args)}
+          />
           <GoogleJobConsole
             operations={status?.operations || []}
             targetPolicy={status?.pilotTargetPolicy || "fixtures"}

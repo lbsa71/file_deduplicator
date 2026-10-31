@@ -195,9 +195,13 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
 
         watcher = Reconciler(library, lambda: job("system", "scan", scan))
         watcher.start()
+        import asyncio
+        inventory_runtime = app.state.google_inventory_runtime
+        inventory_runtime.start(asyncio.get_running_loop(), app.state.google_inventory_wake)
         try:
             yield
         finally:
+            inventory_runtime.close()
             watcher.close()
 
     app = FastAPI(title="PhotoFlow Web", lifespan=lifespan)

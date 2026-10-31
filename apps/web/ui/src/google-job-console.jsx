@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { readSuite, pilotSuite } from "./google-jobs.js";
+import { GoogleReconciliation } from "./google-reconciliation.jsx";
 const matchLabels = {
   "verified-local": "Local original verified",
   unmapped: "No account-bound local mapping. A local copy may still exist.",
@@ -128,6 +129,14 @@ export function GoogleJobConsole({
           </details>
         </section>
       )}
+      <GoogleReconciliation
+        key={account || "unpaired"}
+        account={account}
+        photoUrl={photoUrl}
+        busy={busy}
+        act={act}
+        call={call}
+      />
       <label>
         Selected album ID
         <input value={albumId} onChange={(e) => setAlbum(e.target.value)} />

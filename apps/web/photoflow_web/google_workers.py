@@ -246,6 +246,63 @@ class WorkerStore:
                 )
         return {"suite": ident, "items": result}
 
+    def bound_read_jobs(self, owner, account, batch, requests):
+        """Idempotently bind a finite evidence request to exact read jobs."""
+        allowed = {"photo-details", "library-page", "favorites-page", "albums-page", "trash-page", "album-members"}
+        check(isinstance(batch, str) and re.fullmatch(r"[a-f0-9]{32}", batch))
+        check(isinstance(requests, list) and 0 < len(requests) <= 20)
+        normalized = []
+        for request in requests:
+            check(isinstance(request, dict) and set(request) == {"operation", "input"})
+            operation, value = request["operation"], request["input"]
+            check(operation in allowed)
+            spec = JOB_SPECS[operation]
+            spec["validate_input"](value)
+            value = {**{key: None for key, kind in spec["fields"].items() if kind.endswith("?")}, **value}
+            normalized.append((operation, value))
+        with self.db() as db:
+            worker = db.execute("SELECT * FROM workers WHERE owner=? AND expires>?", (owner, self.now())).fetchone()
+            check(worker and worker["account"] == account)
+            rows = db.execute("SELECT * FROM jobs WHERE suite=? ORDER BY rowid", (batch,)).fetchall()
+            if rows:
+                check(len(rows) == len(normalized))
+                for row, (operation, value) in zip(rows, normalized):
+                    check(row["owner"] == owner and row["account"] == account
+                          and row["operation"] == operation and row["version"] == JOB_SPECS[operation]["version"]
+                          and json.loads(row["input"]) == value)
+                return [self.public_job(row) for row in rows]
+            return [self._enqueue(db, owner, operation, value, False, batch) for operation, value in normalized]
+
+    def bound_read_result(self, owner, account, batch, ident, operation, value):
+        check(operation in {"photo-details", "library-page", "favorites-page", "albums-page", "trash-page", "album-members"})
+        spec = JOB_SPECS[operation]
+        spec["validate_input"](value)
+        value = {**{key: None for key, kind in spec["fields"].items() if kind.endswith("?")}, **value}
+        with self.db() as db:
+            row = db.execute("SELECT * FROM jobs WHERE id=?", (ident,)).fetchone()
+        if not row:
+            return {"state": "unavailable"}
+        check(row["owner"] == owner and row["account"] == account and row["suite"] == batch
+              and row["operation"] == operation and row["version"] == spec["version"]
+              and json.loads(row["input"]) == value)
+        result = json.loads(row["result"]) if row["result"] else None
+        if row["state"] == "succeeded":
+            spec["validate_result"](result)
+        return {"state": row["state"], "started": row["started"], "result": result, "error": row["error"]}
+
+    def observation_jobs(self, owner, account, batch, photo_urls):
+        check(isinstance(photo_urls, list) and 0 < len(photo_urls) <= 20)
+        keys = [photo_key(url) for url in photo_urls]
+        check(len(set(keys)) == len(keys))
+        return self.bound_read_jobs(owner, account, batch, [
+            {"operation": "photo-details", "input": {"photoUrl": url}} for url in photo_urls])
+
+    def observation_job(self, owner, account, batch, ident, photo_url):
+        result = self.bound_read_result(owner, account, batch, ident, "photo-details", {"photoUrl": photo_url})
+        if result["state"] == "succeeded":
+            check(result["result"]["photo"]["mediaKey"] == photo_key(photo_url))
+        return result
+
     def claim(self, worker):
         with self.db() as db:
             for row in db.execute(
@@ -619,6 +676,11 @@ def install_worker_routes(
     def wake():
         for event in active.values():
             event.set()
+
+    from .google_reconciliation import install_review_routes
+    install_review_routes(app, library, store, session, wake)
+    from .google_inventory_runtime import install_inventory_routes
+    install_inventory_routes(app, library, store, session, authorized, wake)
 
     @app.post("/api/v1/google/originals/{ident}")
     async def import_original(ident: str, req: Request):

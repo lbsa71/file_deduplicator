@@ -57,6 +57,18 @@ class LocalGoogleMatchTests(unittest.TestCase):
         self.library.rebuild()
         self.assertEqual(self.check()["state"], "unmapped")
 
+    def test_local_size_change_is_not_reported_as_a_remote_details_change(self):
+        self.path.write_bytes(self.raw[:-1])
+        self.assertEqual(self.check(size=len(self.raw))["state"], "local-content-changed")
+        # A subsequent local scan may already know the new hash/size. The saved
+        # Google-original association must still expose changed original bytes.
+        record = json.loads(self.sidecar.read_bytes())
+        import hashlib
+        record["file"].update(size_bytes=len(self.raw)-1, sha256=hashlib.sha256(self.raw[:-1]).hexdigest())
+        atomic(self.sidecar, record)
+        self.library.put_index(record, self.sidecar)
+        self.assertEqual(self.check(size=len(self.raw))["state"], "local-content-changed")
+
     def test_trash_is_distinct_from_an_active_original_and_restore_rechecks_bytes(self):
         self.library.trash(self.ident, self.record["revision"], "alice")
         self.assertEqual(self.check()["state"], "local-trash")

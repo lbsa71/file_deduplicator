@@ -27,8 +27,8 @@ operations, durable job control/events, then the remaining user and integration
 workflows. A blocked deployment or cloud qualification gate does not block local
 implementation and synthetic verification of other requirements.
 
-Latest checkpoint: 120 core service tests, 109 web tests and 130 Google package
-tests pass on macOS; the synthetic extension E2E completes 30 jobs over 23
+Latest checkpoint: 120 core service tests, 122 web tests and 130 Google package
+tests pass on macOS; the synthetic extension E2E completes 31 jobs over 23
 operation types. Live extension reload restored readiness with zero additional
 photo jobs. Live
 authenticated rendering produced 64/256/512/1024/2048 bounds (768/6,850/24,582/
@@ -39,6 +39,14 @@ original checks now rehash mapped files, distinguish uncertain results, and rebu
 their index from portable sidecars. The durable operation store and coordinator
 have tests but remain unwired into the running app; restart behavior,
 cancellation/retry and events remain a future integration slice.
+
+Selected-photo reconciliation preparation now has a read-only review workflow:
+portable account/library-bound observations, idempotent finite read-job binding,
+ten-minute remote freshness, verified local SHA-256/revisions, restart/reload
+recovery, and explicit gaps in preservation and retention evidence. These reports
+do not evaluate or execute the retention policy. Full inventories, album intent,
+matched Takeout metadata, independent backup and companion evidence remain
+separate implementation slices.
 
 This plan distills the *Fotohantering* conversation. Later decisions supersede
 earlier sketches: one finite batch command, no database, adjacent JSON records,

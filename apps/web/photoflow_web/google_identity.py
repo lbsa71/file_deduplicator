@@ -91,8 +91,9 @@ class LocalGoogleMatches:
             result["state"] = "remote-details-changed"
             return result
         for row in rows:
-            state = self.verify(row, target, budget)
-            result["candidates"].append({"recordId": row["id"], "state": state})
+            proof = {}
+            state = self.verify(row, target, budget, proof)
+            result["candidates"].append({"recordId": row["id"], "state": state, **proof})
             if state == "verified-local":
                 result["recordIds"].append(row["id"])
         if result["recordIds"]:
@@ -102,7 +103,7 @@ class LocalGoogleMatches:
             result["state"] = next(iter(states)) if len(states) == 1 else "needs-investigation"
         return result
 
-    def verify(self, row, target, budget):
+    def verify(self, row, target, budget, proof):
         from .core import Conflict, digest
         try:
             cached = self.library.get(row["id"])
@@ -114,8 +115,6 @@ class LocalGoogleMatches:
                 return "local-trash"
             path = self.library.path(record["file"]["relative_path"])
             before = path.stat()
-            if "size" in target and before.st_size != target["size"]:
-                return "remote-details-changed"
             if before.st_size > budget[0]:
                 return "verification-deferred"
             budget[0] -= before.st_size
@@ -128,6 +127,9 @@ class LocalGoogleMatches:
                 return "local-content-changed"
             if sha != row["sha256"] or sha != record["file"].get("sha256"):
                 return "local-content-changed"
+            if "size" in target and before.st_size != target["size"]:
+                return "remote-details-changed"
+            proof.update(revision=cached["revision"], sha256=sha)
             return "verified-local"
         except Conflict:
             return "stale-local-metadata"
