@@ -123,6 +123,54 @@ export class JobDiagnostics {
         ? { envelopeRecords: safe.envelopeRecords }
         : {}),
     };
+    const validation = error?.validation;
+    if (
+      validation &&
+      ["field", "mediaKey", "dedupKey", "albumId"].includes(validation.field) &&
+      [
+        "id",
+        "cursor",
+        "bool",
+        "text",
+        "title",
+        "epoch",
+        "timezone",
+        "scale",
+        "coordinates",
+        "hashes",
+      ].includes(validation.expected) &&
+      [
+        "string",
+        "number",
+        "boolean",
+        "null",
+        "array",
+        "object",
+        "undefined",
+      ].includes(validation.valueType)
+    ) {
+      this.failureInfo.validation = {
+        field: validation.field,
+        expected: validation.expected,
+        valueType: validation.valueType,
+      };
+      if (
+        Number.isSafeInteger(validation.length) &&
+        validation.length >= 0 &&
+        validation.length <= 16 * 1024 * 1024
+      )
+        this.failureInfo.validation.length = validation.length;
+      for (const key of [
+        "containsPlus",
+        "containsSlash",
+        "containsPadding",
+        "containsWhitespace",
+        "containsControl",
+        "containsNonAscii",
+      ])
+        if (typeof validation[key] === "boolean")
+          this.failureInfo.validation[key] = validation[key];
+    }
   }
   snapshot() {
     return {

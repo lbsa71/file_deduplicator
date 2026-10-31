@@ -1,4 +1,4 @@
-import { requireThat } from "./errors.js";
+import { ProtocolError, requireThat } from "./errors.js";
 import { CATALOG } from "./job-catalog.js";
 export const JOB_PROTOCOL_VERSION = 2;
 const phases = Object.freeze([
@@ -33,7 +33,7 @@ export function photoKey(value) {
   requireThat(match, "Expected library photo URL", "INPUT");
   return match[1];
 }
-export function validateField(type, value) {
+export function validateField(type, value, field = "field") {
   const base = type.replace(/\?$/, "");
   if (type.endsWith("?") && value == null) return;
   if (base === "photoUrl") {
@@ -81,7 +81,27 @@ export function validateField(type, value) {
           !/[\s\x00-\x1f]/.test(v),
       ),
   };
-  requireThat(rules[base]?.(), "Invalid job field", "INPUT");
+  if (!rules[base]?.()) {
+    const error = new ProtocolError("Invalid job field", "INPUT");
+    error.validation = {
+      expected: base,
+      field,
+      valueType:
+        value === null ? "null" : Array.isArray(value) ? "array" : typeof value,
+      ...(typeof value === "string"
+        ? {
+            length: value.length,
+            containsPlus: value.includes("+"),
+            containsSlash: value.includes("/"),
+            containsPadding: value.includes("="),
+            containsWhitespace: /\s/.test(value),
+            containsControl: /[\x00-\x1f\x7f]/.test(value),
+            containsNonAscii: /[^\x00-\x7f]/.test(value),
+          }
+        : {}),
+    };
+    throw error;
+  }
 }
 function input(spec, value) {
   requireThat(
@@ -123,8 +143,8 @@ function media(value, namespace) {
     Object.keys(value).length === 6 && value.namespace === namespace,
     "Wrong media namespace",
   );
-  fieldId(value.mediaKey);
-  fieldId(value.dedupKey);
+  fieldId(value.mediaKey, "mediaKey");
+  fieldId(value.dedupKey, "dedupKey");
   for (const name of ["favorite", "companion"])
     requireThat(
       value[name] === null || typeof value[name] === "boolean",
@@ -132,8 +152,8 @@ function media(value, namespace) {
     );
   if (value.trashTimestamp !== null) number(value.trashTimestamp);
 }
-function fieldId(value) {
-  validateField("id", value);
+function fieldId(value, field = "field") {
+  validateField("id", value, field);
 }
 function album(value) {
   keys(value, ["namespace", "albumId", "title", "itemCount", "shared"]);
@@ -145,7 +165,7 @@ function album(value) {
       (value.shared === null || typeof value.shared === "boolean"),
     "Invalid album",
   );
-  fieldId(value.albumId);
+  fieldId(value.albumId, "albumId");
   number(value.itemCount, 0, 1000000);
 }
 export function validateResult(kind, result, operation) {
@@ -249,10 +269,7 @@ export function validateResult(kind, result, operation) {
     keys(result, ["used", "total", "photosUsed", "retentionReady"]);
     requireThat(Object.keys(result).length === 4, "Invalid quota");
     ["used", "total", "photosUsed"].forEach((k) => number(result[k]));
-    requireThat(
-      result.photosUsed <= result.used,
-      "Invalid quota result",
-    );
+    requireThat(result.photosUsed <= result.used, "Invalid quota result");
   } else if (kind === "matches") {
     keys(result, ["items", "absenceProven", "retentionReady"]);
     requireThat(

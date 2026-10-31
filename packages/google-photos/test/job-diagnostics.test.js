@@ -2,6 +2,59 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JobDiagnostics } from "../src/job-diagnostics.js";
 import { envelope, item } from "./fixtures.js";
+import { JOBS } from "../src/jobs.js";
+import { parseItem } from "../src/protocol.js";
+
+test("rejected page identifiers expose only field shape in worker diagnostics", () => {
+  const photo = parseItem(item());
+  for (const [field, value] of [
+    ["dedupKey", "PRIVATE/value+="],
+    ["mediaKey", "PRIVATE_" + "a".repeat(260)],
+  ]) {
+    const d = new JobDiagnostics({ id: "job-a", operation: "library-page" });
+    let error;
+    try {
+      JOBS["library-page"].validateResult({
+        items: [{ ...photo, [field]: value }],
+        next: null,
+        complete: true,
+        retentionReady: false,
+      });
+    } catch (failure) {
+      error = failure;
+    }
+    assert.ok(error, "invalid identifiers must still be rejected");
+    d.failure(error);
+    const result = d.snapshot();
+    assert.equal(result.failure.validation.field, field);
+    assert.equal(result.failure.validation.expected, "id");
+    assert.equal(result.failure.validation.valueType, "string");
+    assert.equal(result.failure.validation.length, value.length);
+    assert.equal(result.failure.validation.containsPlus, value.includes("+"));
+    assert.equal(result.failure.validation.containsSlash, value.includes("/"));
+    assert.equal(
+      result.failure.validation.containsPadding,
+      value.includes("="),
+    );
+    assert.ok(!JSON.stringify(result).includes("PRIVATE"));
+  }
+});
+
+test("validation diagnostics do not forward arbitrary error properties", () => {
+  const d = new JobDiagnostics({ id: "job-a", operation: "library-page" });
+  d.failure(
+    Object.assign(new Error("PRIVATE_MESSAGE"), {
+      code: "INPUT",
+      validation: {
+        field: "PRIVATE_FIELD",
+        expected: "PRIVATE_EXPECTED",
+        value: "PRIVATE_VALUE",
+        length: "PRIVATE_LENGTH",
+      },
+    }),
+  );
+  assert.ok(!JSON.stringify(d.snapshot()).includes("PRIVATE"));
+});
 test("job diagnostics preserve RPC structure, redact values and bound retained evidence", () => {
   const diagnostic = new JobDiagnostics(
     { id: "job-a", operation: "inventory-counts" },
