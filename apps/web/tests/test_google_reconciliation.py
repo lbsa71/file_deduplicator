@@ -116,6 +116,43 @@ class ReconciliationTests(unittest.TestCase):
         self.assertIn("local", remote["reason"])
         self.assertEqual([op["operation"] for op in manifest["operations"]], ["storage-quota"])
 
+    def test_preparation_resume_reuses_completed_reads_and_preserves_failed_request(self):
+        enqueue = self.remote.enqueue_once
+        failed_keys = []
+        def fail_once(owner, key, operation, value, confirmed=False, **kwargs):
+            result = enqueue(owner, key, operation, value, confirmed, **kwargs)
+            if operation == "albums-page" and not failed_keys:
+                failed_keys.append(key)
+                self.remote.jobs[key].update(state="failed", error="PROTOCOL")
+                return copy.deepcopy(self.remote.jobs[key])
+            return result
+        self.remote.enqueue_once = fail_once
+        job = self.service.prepare("alice", {})
+        self.service.runner.run_once()
+        self.assertEqual(self.service.jobs.get(job["id"])["state"], "partial")
+        self.service.resume("alice", job["id"])
+        self.service.runner.run_once()
+        finished = self.service.jobs.get(job["id"])
+        self.assertEqual(finished["state"], "succeeded", finished)
+        self.assertEqual(self.remote.jobs[failed_keys[0]]["state"], "failed")
+        self.assertEqual(sum(op == "library-page" for op, _, _ in self.remote.calls), 1)
+        self.assertEqual(sum(op == "favorites-page" for op, _, _ in self.remote.calls), 1)
+        self.assertEqual(sum(op == "albums-page" for op, _, _ in self.remote.calls), 2)
+        manifest = self.service.manifest("alice", finished["result"]["manifestId"])
+        keys = {o["step"]: o["workerRequestKey"] for o in manifest["observations"]}
+        self.assertNotEqual(keys["albums-page::0"], failed_keys[0])
+        self.assertIn(keys["albums-page::0"], self.remote.jobs)
+        self.assertTrue(all(not confirmed for _, _, confirmed in self.remote.calls))
+
+    def test_preparation_resume_rejects_a_changed_account(self):
+        self.remote.fail = "albums-page"
+        job = self.service.prepare("alice", {})
+        self.service.runner.run_once()
+        self.remote.account = "different"
+        with self.assertRaises((Conflict, ValueError)):
+            self.service.resume("alice", job["id"])
+        self.assertEqual(self.service.jobs.get(job["id"])["state"], "partial")
+
     def test_selected_preparation_is_bounded_and_explicit_about_inventory_scope(self):
         manifest = self.prepare(photoUrls=["https://photos.google.com/photo/photo-a"])
         self.assertEqual(manifest["inventoryScope"], "selected")

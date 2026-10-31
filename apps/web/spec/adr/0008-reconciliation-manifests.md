@@ -53,6 +53,13 @@ be explicitly resumed after resolving their cause. Unknown Google outcomes stop
 execution and require the existing read-only reconciliation path before resuming.
 Worker jobs, manifests and operation receipts remain private to the owning admin.
 
+Read-only preparations may also be explicitly resumed after diagnosing a stopped
+read. Completed pages are reused; unfinished reads receive attempt-scoped request
+keys. Failed worker jobs remain preserved, and the final manifest records the
+actual successful request key for each observation. This never changes commit
+intent keys or retries a cloud mutation. Account changes, unavailable storage and
+expired preparations reject resume.
+
 ## Quota clarification
 
 As the owner clarified, we do not wait for cleanup to release space if sufficient
@@ -115,8 +122,9 @@ private photo/account identifiers; do not commit real manifests to Git.
 - `POST /api/v1/google/reconciliation/manifests/{id}/commit` with `sha256` schedules
   only that reviewed plan, HTTP 202. Non-vital pilots require the account's selected
   target policy from ADR 0006.
-- `POST /api/v1/google/reconciliation/jobs/{id}/resume` resumes an interrupted
-  commit after validation. Capacity deferrals require a new run instead.
+- `POST /api/v1/google/reconciliation/jobs/{id}/resume` resumes a stopped read-only
+  preparation or an interrupted commit after validation. Capacity deferrals require
+  a new run instead.
 
 The Google connection panel includes Prepare and commit reconciliation, a private
 manifest download and an explicit review/commit action. It shows operation order,

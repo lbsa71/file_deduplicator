@@ -59,6 +59,7 @@ export class DesktopWorker {
     });
     this.handlers = handlers ?? { "inventory-counts": runInventory };
     this.seen = new Map();
+    this.acknowledged = new Set();
     this.ready = false;
     this.lastJobFailed = false;
     this.authenticated = false;
@@ -125,7 +126,22 @@ export class DesktopWorker {
       return;
     }
     requireThat(this.authenticated, "Worker not authenticated", "ACCOUNT");
-    if (message.type === "heartbeat" || message.type === "receipt") return;
+    if (message.type === "heartbeat") return;
+    if (message.type === "receipt") {
+      identifier(message.id);
+      identifier(message.lease);
+      const key = message.id + ":" + message.lease;
+      if (this.seen.has(key)) this.acknowledged.add(key);
+      // The server durably owns acknowledged results. Retain recent delivery
+      // deduplication, while never evicting an unacknowledged result. Writes
+      // additionally retain their independent durable mutation journal.
+      while (this.acknowledged.size > 64) {
+        const oldest = this.acknowledged.values().next().value;
+        this.acknowledged.delete(oldest);
+        this.seen.delete(oldest);
+      }
+      return;
+    }
     requireThat(
       message.type === "job" &&
         Object.hasOwn(JOBS, message.operation) &&

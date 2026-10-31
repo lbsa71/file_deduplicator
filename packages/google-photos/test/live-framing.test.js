@@ -5,6 +5,30 @@ import { decodeEnvelope, parsePage } from "../src/protocol.js";
 import { GooglePhotosClient } from "../src/client.js";
 import { envelope } from "./fixtures.js";
 
+test("qualified empty album keeps exact album context and explicit terminal sentinel", async () => {
+  const empty = [null, null, "", ["album-a", "Empty control", [0, 0]], null, 0];
+  let calls = 0;
+  const client = new GooglePhotosClient({
+    account: "fixture-account",
+    transport: async () => {
+      calls++;
+      return {account: "fixture-account", status: 200, body: envelope("snAcKc", empty)};
+    },
+  });
+  const result = await client.albumItems("album-a");
+  assert.deepEqual(result.items, []);
+  assert.equal(result.complete, true);
+  assert.equal(calls, 1);
+  for (const bad of [
+    [null, null, "", ["other-album", "Empty", [0, 0]]],
+    [null, null, "continue", empty[3]],
+    [null, null, "", ["album-a", "Empty", [1, 0]]],
+    [null, null, "", ["album-a", "Empty", [0, 1]]],
+    [null, null, "", ["album-a", "Empty"]],
+    [null, null],
+  ]) assert.throws(() => parsePage(bad, "albumItems", "album-a"));
+});
+
 test("qualified empty Trash payload is terminal only for the Trash RPC", async () => {
   const client = new GooglePhotosClient({
     account: "fixture-account",

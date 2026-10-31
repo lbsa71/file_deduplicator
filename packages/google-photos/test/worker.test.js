@@ -46,6 +46,24 @@ const job = {
   input: {},
   account: "account-a",
 };
+test("acknowledged job history stays bounded during a full inventory without replaying recent deliveries", async () => {
+  let calls = 0;
+  const h = setup(async () => {
+    calls++;
+    return {photos: 1, favorites: 0, albums: 0, complete: true, retentionReady: false};
+  });
+  h.worker.start();
+  await h.worker.receive({type: "welcome", account: "account-a", protocol: 2});
+  for (let i = 0; i < 250; i++) {
+    const next = {...job, id: "read-" + i, lease: "lease-" + i};
+    await h.worker.receive(next);
+    await h.worker.receive({type: "receipt", id: next.id, lease: next.lease});
+    await h.worker.receive(next);
+  }
+  assert.equal(calls, 250);
+  assert.ok(h.worker.seen.size <= 64);
+  assert.equal(h.socket.closed, undefined);
+});
 test("worker authenticates on WSS, executes only bounded read operation and returns a receipt", async () => {
   const h = setup();
   h.worker.start();

@@ -120,7 +120,7 @@ export function GoogleReconciliation({ call, account, targetPolicy }) {
             {job.waiting_reason ? " — " + job.waiting_reason : ""}
             {job.progress?.stage ? " — " + job.progress.stage : ""}
             {job.error && <p role="alert">{job.error}</p>}
-            {job.action === "google.commit" &&
+            {["google.commit", "google.prepare"].includes(job.action) &&
               ["failed", "partial"].includes(job.state) &&
               !job.result?.deferred?.length && (
                 <button
@@ -135,7 +135,7 @@ export function GoogleReconciliation({ call, account, targetPolicy }) {
                     })
                   }
                 >
-                  Resume interrupted commit
+                  {job.action === "google.prepare" ? "Resume read-only preparation" : "Resume interrupted commit"}
                 </button>
               )}
             {job.result?.manifestId && job.action === "google.prepare" && (

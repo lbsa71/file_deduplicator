@@ -138,7 +138,14 @@ export function parsePage(data, kind, expectedAlbum) {
   const isAlbum = kind === "albumItems";
   const offset = isAlbum ? 1 : 0;
   requireThat(data.length > offset, "Missing items field");
-  const rows = array(data[offset], "page items");
+  const context = isAlbum ? array(data[3], "album context") : null;
+  if (isAlbum)
+    requireThat(context[0] === expectedAlbum, "Wrong album identity");
+  // The controlled empty test album returns null items, an explicit empty
+  // cursor, and [0,0] at context[2]. Missing/changed fields stay incompatible.
+  const emptyAlbum = isAlbum && data[1] === null && data[2] === "" &&
+    Array.isArray(context[2]) && context[2][0] === 0 && context[2][1] === 0;
+  const rows = emptyAlbum ? [] : array(data[offset], "page items");
   const cursor = data[offset + 1];
   // Protobuf JSON omits trailing fields. Explicit null/empty and omitted trailing
   // cursor are terminal only after the items array has been validated.
@@ -147,11 +154,6 @@ export function parsePage(data, kind, expectedAlbum) {
     "Invalid continuation token",
   );
   if (cursor) identifier(cursor, "continuation token");
-  if (isAlbum)
-    requireThat(
-      array(data[3], "album context")[0] === expectedAlbum,
-      "Wrong album identity",
-    );
   return {
     items: rows.map((row) =>
       kind === "albums"

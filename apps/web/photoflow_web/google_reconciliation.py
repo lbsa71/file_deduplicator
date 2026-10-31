@@ -65,6 +65,8 @@ class Reconciliation:
             "Reconciliation state must be private",
         )
         self.jobs = JobStore(self.directory, library.id, clock=now)
+        with self.jobs.db() as db:
+            db.execute("CREATE TABLE IF NOT EXISTS worker_requests(job TEXT,name TEXT,attempt INTEGER,request_key TEXT NOT NULL,PRIMARY KEY(job,name,attempt))")
         self.runner = JobCoordinator(
             self.jobs,
             self.execute,
@@ -194,14 +196,19 @@ class Reconciliation:
         job = self.jobs.get(ident)
         if job["owner"] != owner:
             raise KeyError(ident)
-        require(
-            job["action"] == "google.commit",
-            "Only an interrupted commit can be resumed",
-        )
-        if job.get("result", {}).get("deferred"):
-            raise Conflict("Deferred uploads belong to a new preparation run")
-        manifest = self.manifest(owner, job["params"]["manifestId"])
-        self.validate(owner, manifest)
+        if job["action"] == "google.prepare":
+            if self.account(owner) != job["params"]["account"]:
+                raise Conflict("Google account changed; prepare again")
+            if self.now() > job["created"] + 86400:
+                raise Conflict("Preparation expired; prepare again")
+            if not self.library.available():
+                raise OSError("Library storage is unavailable")
+        else:
+            require(job["action"] == "google.commit", "Unsupported reconciliation command")
+            if (job.get("result") or {}).get("deferred"):
+                raise Conflict("Deferred uploads belong to a new preparation run")
+            manifest = self.manifest(owner, job["params"]["manifestId"])
+            self.validate(owner, manifest)
         value = self.jobs.retry(ident)
         if self.runner.started:
             self.runner.wake()
@@ -213,6 +220,14 @@ class Reconciliation:
                 raise Conflict("Google account changed")
             context.checkpoint(stage=name)
             key = job["id"] + ":" + digest(name.encode())[:32]
+            # Explicit read-only preparation retries keep completed steps and
+            # failed worker receipts. Commit intents keep their original key.
+            if job["action"] == "google.prepare":
+                require(JOB_SPECS[operation]["effect"] == "read", "Preparation must remain read-only")
+                if job["attempt"] > 1:
+                    key += ":read-retry:" + str(job["attempt"])
+            with self.jobs.db() as db:
+                db.execute("INSERT OR REPLACE INTO worker_requests VALUES(?,?,?,?)", (job["id"], name, job["attempt"], key))
             state = self.remote.enqueue_once(
                 job["owner"],
                 key,
@@ -570,9 +585,10 @@ class Reconciliation:
             observations = [
                 {
                     "step": row["name"],
-                    "workerRequestKey": job["id"]
-                    + ":"
-                    + digest(row["name"].encode())[:32],
+                    "workerRequestKey": (
+                        db.execute("SELECT request_key FROM worker_requests WHERE job=? AND name=? ORDER BY attempt DESC LIMIT 1", (job["id"], row["name"])).fetchone()
+                        or [job["id"] + ":" + digest(row["name"].encode())[:32]]
+                    )[0],
                     "resultSha256": digest(canonical(json.loads(row["result"]))),
                 }
                 for row in db.execute(
