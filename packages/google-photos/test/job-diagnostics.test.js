@@ -9,6 +9,7 @@ test("rejected page identifiers expose only field shape in worker diagnostics", 
   const photo = parseItem(item());
   for (const [field, value] of [
     ["dedupKey", "PRIVATE/value+="],
+    ["dedupKey", "PRIVATE.value:tag~suffix%"],
     ["mediaKey", "PRIVATE_" + "a".repeat(260)],
   ]) {
     const d = new JobDiagnostics({ id: "job-a", operation: "library-page" });
@@ -32,6 +33,13 @@ test("rejected page identifiers expose only field shape in worker diagnostics", 
     assert.equal(result.failure.validation.length, value.length);
     assert.equal(result.failure.validation.containsPlus, value.includes("+"));
     assert.equal(result.failure.validation.containsSlash, value.includes("/"));
+    for (const [flag, character] of [
+      ["containsDot", "."],
+      ["containsColon", ":"],
+      ["containsTilde", "~"],
+      ["containsPercent", "%"],
+    ])
+      assert.equal(result.failure.validation[flag], value.includes(character));
     assert.equal(
       result.failure.validation.containsPadding,
       value.includes("="),

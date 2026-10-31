@@ -162,6 +162,10 @@ export class JobDiagnostics {
         this.failureInfo.validation.length = validation.length;
       for (const key of [
         "containsPlus",
+        "containsDot",
+        "containsColon",
+        "containsTilde",
+        "containsPercent",
         "containsSlash",
         "containsPadding",
         "containsWhitespace",

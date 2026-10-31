@@ -3,6 +3,24 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { decodeEnvelope, parsePage } from "../src/protocol.js";
 import { GooglePhotosClient } from "../src/client.js";
+import { envelope } from "./fixtures.js";
+
+test("qualified empty Trash payload is terminal only for the Trash RPC", async () => {
+  const client = new GooglePhotosClient({
+    account: "fixture-account",
+    transport: async () => ({
+      account: "fixture-account",
+      status: 200,
+      body: envelope("zy0IHe", []),
+    }),
+  });
+  const trash = await client.trash();
+  assert.deepEqual(trash.items, []);
+  assert.equal(trash.complete, true);
+  for (const rpc of ["lcxiM", "EzkLib", "Z5xsfc", "VrseUb", "fDcn4b"])
+    assert.throws(() => decodeEnvelope(envelope(rpc, []), rpc));
+  assert.throws(() => parsePage([], "inventory"));
+});
 
 const page = JSON.parse(
   await readFile(

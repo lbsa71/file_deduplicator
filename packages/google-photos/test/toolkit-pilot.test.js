@@ -179,6 +179,43 @@ test("restore uses a journaled fixture and exact identity", async () => {
   assert.equal(h.calls.length, 2);
   assert.deepEqual(h.calls[1].data, [null, 3, ["dedup-a"], 2]);
 });
+test("restore identifies a trashed fixture without unavailable library details and verifies its return", async () => {
+  const h = setup();
+  await h.pilot.execute(h.job("trash", { photoUrl }));
+  let reads = 0;
+  h.reader.item = async () => {
+    reads++;
+    assert.equal(h.calls.length, 2, "Library details are only available after restore");
+    return structuredClone(h.photo);
+  };
+  const result = await h.pilot.execute(h.job("restore", { photoUrl }));
+  assert.equal(result.verified, true);
+  assert.equal(reads, 1);
+});
+test("restore rejects incomplete or mismatched Trash identities before sending", async () => {
+  for (const trash of [
+    {items: [], complete: false},
+    {items: [{mediaKey: "other", dedupKey: "dedup-a"}], complete: true},
+    {items: [{mediaKey: "media-a", dedupKey: "other"}], complete: true},
+    {items: [{mediaKey: "media-a", dedupKey: "dedup-a"}, {mediaKey: "media-a", dedupKey: "dedup-a"}], complete: true},
+  ]) {
+    const h = setup();
+    await h.pilot.execute(h.job("trash", {photoUrl}));
+    h.reader.trash = async () => trash;
+    await assert.rejects(h.pilot.execute(h.job("restore", {photoUrl})));
+    assert.equal(h.calls.length, 1);
+  }
+});
+test("absence from Trash alone cannot verify restoration or permit another write", async () => {
+  const h = setup();
+  await h.pilot.execute(h.job("trash", {photoUrl}));
+  h.reader.item = async () => ({...h.photo, dedupKey: "changed"});
+  const job = h.job("restore", {photoUrl});
+  await assert.rejects(h.pilot.execute(job), {code: "UNKNOWN_OUTCOME"});
+  assert.equal((await h.journal.get(job.id)).state, "unknown");
+  await assert.rejects(h.pilot.execute(job), {code: "UNRESOLVED"});
+  assert.equal(h.calls.length, 2);
+});
 test("missing scope, changed account, expired grant and real photo names send no writes", async () => {
   for (const change of [
     { testScope: null },

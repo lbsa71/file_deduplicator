@@ -85,12 +85,16 @@ export class ToolkitPilot {
         "Restore requires an earlier journaled test fixture",
         "PRECONDITION",
       );
-      const basic = await this.reader.item(mediaKey);
-      requireThat(
-        basic.mediaKey === photo.mediaKey && basic.dedupKey === photo.dedupKey,
-        "Restoration identity changed",
-        "PRECONDITION",
-      );
+      // Library details are unavailable while the item is in Trash. Bind the
+      // current Trash entry to both journaled identifiers before restoring it.
+      if (!(await this.inTrash(photo))) {
+        const basic = await this.reader.item(mediaKey);
+        requireThat(
+          basic.mediaKey === photo.mediaKey && basic.dedupKey === photo.dedupKey,
+          "Restoration identity changed",
+          "PRECONDITION",
+        );
+      }
     } else photo = await this.reader.observation(mediaKey);
     requireThat(
       photo.namespace === "library-media" &&
@@ -105,6 +109,22 @@ export class ToolkitPilot {
       "PRECONDITION",
     );
     return photo;
+  }
+  async inTrash(photo) {
+    const trash = await this.reader.trash();
+    requireThat(trash.complete === true, "Incomplete Trash inventory");
+    const matches = trash.items.filter(
+      (p) => p.mediaKey === photo.mediaKey || p.dedupKey === photo.dedupKey,
+    );
+    requireThat(
+      matches.length <= 1 &&
+        matches.every(
+          (p) => p.mediaKey === photo.mediaKey && p.dedupKey === photo.dedupKey,
+        ),
+      "Trash identity changed or is ambiguous",
+      "PRECONDITION",
+    );
+    return matches.length === 1;
   }
   async members(input, photo, targetPolicy = "fixtures") {
     const albums = await this.reader.albums();
@@ -144,9 +164,14 @@ export class ToolkitPilot {
       );
     }
     if (operation === "trash" || operation === "restore") {
-      const trash = await this.reader.trash();
-      const exists = trash.items.some((p) => p.dedupKey === photo.dedupKey);
-      return exists === (operation === "trash");
+      const exists = await this.inTrash(photo);
+      if (operation === "trash") return exists;
+      if (exists) return false;
+      const restored = await this.reader.item(photo.mediaKey);
+      return (
+        restored.mediaKey === photo.mediaKey &&
+        restored.dedupKey === photo.dedupKey
+      );
     }
     if (operation === "album-add" || operation === "album-remove")
       return (

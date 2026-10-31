@@ -72,7 +72,8 @@ export function decodeEnvelope(body, expectedRpc) {
         throw new ProtocolError("Invalid RPC payload JSON");
       }
       requireThat(
-        Array.isArray(value) && value.length > 0,
+        Array.isArray(value) &&
+          (value.length > 0 || expectedRpc === "zy0IHe"),
         "Missing RPC payload structure",
       );
       found.push(value);
@@ -130,6 +131,10 @@ export function parseAlbum(row) {
 }
 export function parsePage(data, kind, expectedAlbum) {
   array(data, "page");
+  // Qualified against the Google Trash UI's "No items" state. Other page
+  // operations still require their items field; [] must not imply absence there.
+  if (kind === "trash" && data.length === 0)
+    return { items: [], next: null };
   const isAlbum = kind === "albumItems";
   const offset = isAlbum ? 1 : 0;
   requireThat(data.length > offset, "Missing items field");
@@ -170,7 +175,9 @@ export function parseDetails(data, expectedMedia, extended = false) {
     mediaKey: identifier(row[0]),
     dedupKey: identifier(row[11]),
     filename: text(row[2], "filename"),
-    albums: albums == null ? null : albums.map(parseAlbum),
+    // Explicit null is the qualified empty-membership representation. Omitted
+    // fields remain unknown; they must not authorize a removal decision.
+    albums: albums === undefined ? null : (albums ?? []).map(parseAlbum),
     size: row[5],
   };
 }
