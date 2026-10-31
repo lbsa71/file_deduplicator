@@ -1,5 +1,9 @@
 # Verified frame-length incompatibility, 2026-10-31
 
+Follow-up: the rebuilt extension completed a
+[live inventory/favorites/album-list read](2026-10-31-live-read-success.md).
+The count probe remains explicitly unsuitable for retention decisions.
+
 Starting `origin/main`: `de7f00cb47a7b3bb089e108622f1881808633521`.
 Browser: Chrome 156.0.8078.74 on Windows. Account alias: `personal-account-A`.
 
