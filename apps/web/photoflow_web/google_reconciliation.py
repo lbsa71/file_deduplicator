@@ -496,13 +496,13 @@ class Reconciliation:
             elif matches:
                 item.update(
                     action="review-trash",
-                    reason="Candidate association only; fresh remote bytes, ownership, metadata and backup evidence are required",
+                    reason="Candidate association only; fresh remote bytes, ownership and metadata evidence are required; owner accepts the Takeout backup without verification",
                     blocked=True,
                 )
             else:
                 item.update(
-                    action="review",
-                    reason="No proved local mapping; retain and select for preservation verification",
+                    action="keep",
+                    reason="No verified local original; retain in Google",
                     blocked=True,
                 )
             items.append(item)
@@ -589,6 +589,13 @@ class Reconciliation:
             "createdAt": now,
             "expiresAt": now + 86400,
             "options": options,
+            "retentionPolicy": {
+                "version": "keep-starred-album-or-no-verified-local-v1",
+                "keep": ["starred", "any-album", "no-verified-local-original"],
+                "backupRequirement": "owner-asserted-takeout",
+                "backupVerified": False,
+                "cleanup": "reviewed-reversible-trash-only",
+            },
             "inventoryComplete": True,
             "inventoryScope": "selected" if selected else "account",
             "observations": observations,

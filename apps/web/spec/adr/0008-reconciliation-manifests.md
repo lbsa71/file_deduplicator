@@ -2,6 +2,11 @@
 
 Status: Implemented first vertical slice — 2026-10-31.
 
+The owner-approved retention and backup-policy revision in
+[ADR 0009](0009-owner-approved-google-retention-sweep.md) supersedes the independent
+backup verification requirement below. Local originals and current remote state
+still require verification; production execution remains gated.
+
 ## Contract
 
 The owner requested a read-only preparation stage producing an inspectable manifest

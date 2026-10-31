@@ -182,6 +182,13 @@ export function GoogleReconciliation({ call, account, targetPolicy }) {
           <pre>{JSON.stringify(manifest.counts.actions, null, 2)}</pre>
           <p>{manifest.limitations.join(" ")}</p>
           <button onClick={download}>Download full private manifest</button>
+          {manifest.retentionPolicy && (
+            <p>
+              Retain starred photos, all album members and anything without a
+              verified local original. The owner accepts the Takeout backup
+              without verification. Only reviewed reversible Trash is permitted.
+            </p>
+          )}
           <table>
             <thead>
               <tr>

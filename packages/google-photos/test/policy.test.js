@@ -15,6 +15,13 @@ const base = {
   remoteComplete: true,
   uploadState: "none",
 };
+test("owner accepts the Takeout backup without verification; local-original checks still apply", () => {
+  for (const backupVerified of [false, null, undefined]) {
+    assert.equal(decideRetention({...base, backupVerified}).action, "review-trash");
+    assert.equal(decideRetention({...base, backupVerified, localVerified: false}).action, "keep");
+    assert.notEqual(decideRetention({...base, backupVerified, localVerified: undefined}).action, "review-trash");
+  }
+});
 test("every positive rule retains; only fully established unprotected originals are removal candidates", () => {
   assert.equal(decideRetention(base).action, "review-trash");
   for (const k of [
@@ -26,7 +33,6 @@ test("every positive rule retains; only fully established unprotected originals 
     assert.equal(decideRetention({ ...base, [k]: true }).action, "keep");
   for (const k of [
     "localVerified",
-    "backupVerified",
     "companionsVerified",
     "identityVerified",
     "remoteComplete",
@@ -65,7 +71,7 @@ test("missing Google metadata uploads only after absence is proved, then waits f
 test("invalid or absent facts cannot become negative retention evidence", () => {
   for (const metadata of ["invalid", "ambiguous", undefined])
     assert.equal(decideRetention({ ...base, metadata }).action, "review");
-  for (const k of Object.keys(base))
+  for (const k of Object.keys(base).filter(k => k !== "backupVerified"))
     assert.notEqual(
       decideRetention({ ...base, [k]: undefined }).action,
       "review-trash",

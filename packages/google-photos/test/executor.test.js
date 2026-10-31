@@ -138,7 +138,6 @@ test("trash requires every preservation fact, no favorites/curated albums, and o
     { curatedAlbum: true },
     { curatedAlbum: null },
     { owned: false },
-    { backupVerified: false },
     { metadataVerified: false },
     { companionsVerified: false },
     { localVerified: false },
@@ -149,6 +148,18 @@ test("trash requires every preservation fact, no favorites/curated albums, and o
     );
     assert.equal(h.calls.length, 0);
   }
+});
+test("owner-accepted backup does not substitute for verified local bytes", async () => {
+  let writes = 0;
+  const h = setup({
+    inspect: async () => ({...observed(), backupVerified: false, trashed: writes > 0}),
+    transport: async () => {
+      writes++;
+      return {account: ACCOUNT, status: 200, body: envelope("XwAOJf", [[]])};
+    },
+  });
+  await h.executor.execute({...plan(), type: "trash", value: undefined});
+  assert.equal(writes, 1);
 });
 test("intent cannot be reused for different targets or changed operation", async () => {
   const h = setup();

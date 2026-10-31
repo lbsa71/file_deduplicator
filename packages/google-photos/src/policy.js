@@ -2,7 +2,6 @@ import { requireThat } from "./errors.js";
 export function decideRetention(facts) {
   const bools = [
     "localVerified",
-    "backupVerified",
     "companionsVerified",
     "localFavorite",
     "remoteFavorite",
@@ -66,10 +65,8 @@ export function decideRetention(facts) {
       "await-metadata",
       "Retain until matching Takeout metadata is imported",
     );
-  if (!facts.backupVerified)
-    return result("keep", "Independent backup is not verified");
   return result(
     "review-trash",
-    "Verified locally and independently backed up; no retention reason",
+    "Verified locally; owner accepts the Takeout backup without verification; no retention reason",
   );
 }

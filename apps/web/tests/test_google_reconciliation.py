@@ -107,6 +107,15 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(value["counts"]["remote"], 1)
         self.assertEqual(list(self.library.root.glob("**/*.photo.json")), [])
 
+    def test_owner_retention_policy_keeps_remote_only_photos_without_automatic_download_or_trash(self):
+        manifest = self.prepare()
+        self.assertEqual(manifest["retentionPolicy"]["backupRequirement"], "owner-asserted-takeout")
+        self.assertFalse(manifest["retentionPolicy"]["backupVerified"])
+        remote = next(i for i in manifest["items"] if i.get("mediaKey") == "photo-a")
+        self.assertEqual(remote["action"], "keep")
+        self.assertIn("local", remote["reason"])
+        self.assertEqual([op["operation"] for op in manifest["operations"]], ["storage-quota"])
+
     def test_selected_preparation_is_bounded_and_explicit_about_inventory_scope(self):
         manifest = self.prepare(photoUrls=["https://photos.google.com/photo/photo-a"])
         self.assertEqual(manifest["inventoryScope"], "selected")

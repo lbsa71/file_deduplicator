@@ -88,7 +88,6 @@ function preconditions(observed, plan) {
         observed.curatedAlbum === false &&
         [
           "localVerified",
-          "backupVerified",
           "companionsVerified",
           "metadataVerified",
         ].every((k) => observed[k] === true),
