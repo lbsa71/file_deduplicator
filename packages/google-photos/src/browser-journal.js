@@ -85,6 +85,11 @@ export class BrowserJournal {
     );
     JOBS[record.plan.operation].validateInput(record.plan.input);
     requireThat(
+      ["fixtures", "selected"].includes(record.plan.targetPolicy ?? "fixtures"),
+      "Invalid journal target policy",
+      "STORAGE",
+    );
+    requireThat(
       ["prepared", "sent", "unknown", "verified"].includes(record.state),
       "Invalid browser journal state",
       "STORAGE",

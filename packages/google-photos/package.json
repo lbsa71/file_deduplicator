@@ -1,6 +1,6 @@
 {
   "name": "@photoflow/google-photos",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Strict Google Photos protocol adapters, reconciliation rules, and passive capture tools",
   "type": "module",
   "engines": {

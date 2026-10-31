@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PhotoFlow Google Photos",
-  "version": "0.3.0",
-  "description": "Run typed PhotoFlow Google Photos jobs with sanitized diagnostics and gated isolated-account pilots.",
+  "version": "0.3.1",
+  "description": "Run typed PhotoFlow Google Photos jobs with sanitized diagnostics and account-authorized pilots.",
   "permissions": [
     "activeTab",
     "debugger",

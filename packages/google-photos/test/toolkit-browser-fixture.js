@@ -1,5 +1,5 @@
 import { item, album, envelope, ACCOUNT } from "./fixtures.js";
-export function toolkitBrowserFixture() {
+export function toolkitBrowserFixture({ personal = false } = {}) {
   const state = {
     favorite: false,
     archived: false,
@@ -9,7 +9,7 @@ export function toolkitBrowserFixture() {
     timestamp: 1700000000000,
     timezone: 0,
     location: null,
-    albums: [["album-a", "PhotoFlow test existing"]],
+    albums: [["album-a", personal ? "Family" : "PhotoFlow test existing"]],
     writes: [],
     failNextWrite: false,
   };
@@ -28,10 +28,10 @@ export function toolkitBrowserFixture() {
     const row = Array(32).fill(null);
     row[0] = "media-a";
     row[1] = state.description;
-    row[2] = "photoflow-test-fixture.jpg";
+    row[2] = personal ? "Family holiday.jpg" : "photoflow-test-fixture.jpg";
     row[3] = state.timestamp;
     row[4] = state.timezone;
-    row[5] = 100;
+    row[5] = personal ? 20 * 1024 * 1024 : 100;
     row[11] = "dedup-media-a";
     row[13] = state.location ? [state.location] : null;
     row[19] = state.member ? [albumRow(state.albums[0])] : [];

@@ -36,8 +36,19 @@ JOB_PROTOCOL_VERSION = 2
 
 
 class WorkerStore:
-    def __init__(self, directory, now=time.time, test_account=""):
-        self.test_account = test_account
+    def __init__(
+        self,
+        directory,
+        now=time.time,
+        test_account="",
+        *,
+        pilot_account="",
+        target_policy="fixtures",
+    ):
+        check(target_policy in ("fixtures", "selected"))
+        check(not (test_account and pilot_account) or test_account == pilot_account)
+        self.pilot_account = pilot_account or test_account
+        self.target_policy = target_policy
         self.now = now
         directory = Path(directory) / "google-workers"
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -58,6 +69,7 @@ class WorkerStore:
                 ("input", "TEXT NOT NULL DEFAULT '{}'"),
                 ("suite", "TEXT"),
                 ("version", "INTEGER NOT NULL DEFAULT 1"),
+                ("target_policy", "TEXT NOT NULL DEFAULT 'fixtures'"),
             ]:
                 if name not in {
                     row[1] for row in db.execute("PRAGMA table_info(jobs)")
@@ -170,8 +182,8 @@ class WorkerStore:
         if spec["effect"] == "write":
             check(
                 confirmed is True
-                and self.test_account
-                and worker["account"] == self.test_account
+                and self.pilot_account
+                and worker["account"] == self.pilot_account
             )
             check(
                 not db.execute(
@@ -195,7 +207,7 @@ class WorkerStore:
         if not row:
             ident = secrets.token_hex(16)
             db.execute(
-                "INSERT INTO jobs(id,owner,worker,state,created,operation,account,input,suite,version) VALUES(?,?,?,'queued',?,?,?,?,?,?)",
+                "INSERT INTO jobs(id,owner,worker,state,created,operation,account,input,suite,version,target_policy) VALUES(?,?,?,'queued',?,?,?,?,?,?,?)",
                 (
                     ident,
                     owner,
@@ -206,6 +218,7 @@ class WorkerStore:
                     encoded,
                     suite,
                     spec["version"],
+                    self.target_policy,
                 ),
             )
             row = db.execute("SELECT * FROM jobs WHERE id=?", (ident,)).fetchone()
@@ -271,8 +284,9 @@ class WorkerStore:
                     if (
                         failed
                         or unresolved
-                        or not self.test_account
-                        or row["account"] != self.test_account
+                        or not self.pilot_account
+                        or row["account"] != self.pilot_account
+                        or row["target_policy"] != self.target_policy
                     ):
                         db.execute(
                             "UPDATE jobs SET state='blocked',error='UNQUALIFIED' WHERE id=?",
@@ -303,6 +317,7 @@ class WorkerStore:
                 if spec["effect"] == "write":
                     result["testScope"] = {
                         "testOnly": True,
+                        "targetPolicy": row["target_policy"],
                         "account": row["account"],
                         "operation": row["operation"],
                         "jobId": row["id"],
@@ -544,6 +559,11 @@ class WorkerStore:
                 )
             ),
             "account": w["account"] if w else None,
+            "pilotTargetPolicy": (
+                self.target_policy
+                if w and self.pilot_account and w["account"] == self.pilot_account
+                else None
+            ),
             "jobs": [self.public_job(row) for row in jobs],
             "operations": [
                 {
@@ -555,7 +575,7 @@ class WorkerStore:
                     "operation": name,
                     "enabled": spec["effect"] == "read"
                     or bool(
-                        w and self.test_account and w["account"] == self.test_account
+                        w and self.pilot_account and w["account"] == self.pilot_account
                     ),
                 }
                 for name, spec in JOB_SPECS.items()
@@ -564,9 +584,21 @@ class WorkerStore:
 
 
 def install_worker_routes(
-    app, library, session, authorized=lambda owner: True, test_account=""
+    app,
+    library,
+    session,
+    authorized=lambda owner: True,
+    test_account="",
+    *,
+    pilot_account="",
+    target_policy="fixtures",
 ):
-    store = WorkerStore(library.state, test_account=test_account)
+    store = WorkerStore(
+        library.state,
+        test_account=test_account,
+        pilot_account=pilot_account,
+        target_policy=target_policy,
+    )
     active = {}
     app.state.google_workers = store
 

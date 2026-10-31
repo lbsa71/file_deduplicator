@@ -236,10 +236,10 @@ merely because its associated image has moved.
 ## Google Photos desktop worker
 
 Administrators now have a Google Photos connection control in the header. Install
-[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.3.0.zip)
+[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.3.1.zip)
 as an unpacked Chrome/Edge extension. Choose the folder containing manifest.json;
 source installation is deliberately disabled. Existing installations must rebuild
-and manually reload their unpacked extension. Version 0.3 uses job protocol 2 and must be loaded alongside the updated server;
+and manually reload their unpacked extension. Version 0.3.1 uses job protocol 2 and must be loaded alongside the updated server;
 its permissions are unchanged from 0.2.
 
 Open Google Photos, use Check connection, and copy its account value into the
@@ -263,12 +263,15 @@ review sanitized data before sharing. These diagnostics do not prove remote
 absence or authorize removal. See [ADR 0004](spec/adr/0004-desktop-google-worker.md)
 for the protocol, storage, bounds and procedure for adding job types.
 
-The operation workbench offers a prepared finite read suite, isolated write pilot
-suite, individual typed jobs and private result inspection. Pilot writes are disabled
-unless an operator explicitly configures a separate disposable Google account.
-This is a real Google account with synthetic photos, not an account created by
-PhotoFlow. See [ADR 0005](spec/adr/0005-google-job-qualification.md) for the full
-catalogue, setup, test fixture conventions, suite effects and recovery procedure.
+The operation workbench offers a prepared finite read suite, account-authorized write pilot
+suite, individual typed jobs and private result inspection. Pilot writes require an
+explicitly configured account and confirmation. Fixture policy is the default;
+[ADR 0006](spec/adr/0006-account-authorized-google-pilots.md) documents the owner's
+personal-account authorization and selected-target opt-in. See
+[ADR 0005](spec/adr/0005-google-job-qualification.md) for the full catalogue, fixture
+conventions and recovery procedure. Review the finite suite: it changes selected
+metadata and does not restore every previous value. Optional timestamp and location
+writes require explicit inputs; the default metadata input is empty.
 Production retention mutations, image-upload jobs and media download transfers
 are not enabled by this workbench.
 

@@ -2,7 +2,7 @@ import { ProtocolError } from "./errors.js";
 
 // Self-contained so Chrome scripting or Playwright can serialize it into the
 // authenticated page. Session values stay there. Writes require an explicit
-// isolated-account pilot scope; production mutations remain separately gated.
+// account-bound pilot scope; production mutations remain separately gated.
 export function pageRequest(request) {
   const fail = (error) => ({ error });
   // Chrome argument conversion can omit null object properties. Serialize the
@@ -52,7 +52,11 @@ export function pageRequest(request) {
   if (request.mode === "write") {
     const scope = request.testScope;
     const checks = [
-      [scope?.testOnly === true, "TEST_MODE"],
+      [
+        scope?.testOnly === true &&
+          ["fixtures", "selected"].includes(scope?.targetPolicy ?? "fixtures"),
+        "TEST_MODE",
+      ],
       [scope?.account === request.account, "ACCOUNT"],
       [scope?.operation === request.operation, "OPERATION"],
       [writes[request.operation] === request.rpc, "RPC"],

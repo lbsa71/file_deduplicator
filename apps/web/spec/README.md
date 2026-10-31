@@ -25,6 +25,9 @@ numbers are acceptance targets to measure, not results already achieved.
 
 ## Architecture decisions
 
+- [ADR 0006: Account-authorized Google pilots](adr/0006-account-authorized-google-pilots.md)
+  permits explicitly authorized personal-account pilots with exact targets and unchanged recovery guards.
+
 - [ADR 0005: Typed Google jobs and isolated mutation qualification](adr/0005-google-job-qualification.md)
   defines the operation catalogue, finite suites and disposable-account pilot setup.
 

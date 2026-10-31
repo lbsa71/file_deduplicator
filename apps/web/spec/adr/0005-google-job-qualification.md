@@ -2,6 +2,10 @@
 
 Status: Accepted — 2026-10-31. Supersedes the inventory-only contract in ADR 0004.
 
+[ADR 0006](0006-account-authorized-google-pilots.md) supersedes this ADR's
+isolated-account-only requirement. The fixture policy below remains the default;
+explicitly owner-authorized personal-account pilots may use selected targets.
+
 ## Decision
 
 Implement the operations needed for reconciliation as explicit library handlers,

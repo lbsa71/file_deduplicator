@@ -63,7 +63,7 @@ export function GoogleConnection({ api }) {
           </p>
           <p>
             Install the{" "}
-            <a href="/tools/google-photos-worker-0.3.0.zip">
+            <a href="/tools/google-photos-worker-0.3.1.zip">
               PhotoFlow extension
             </a>{" "}
             in Chrome or Edge. Open Google Photos and use its Check connection
@@ -134,6 +134,7 @@ export function GoogleConnection({ api }) {
           </button>
           <GoogleJobConsole
             operations={status?.operations || []}
+            targetPolicy={status?.pilotTargetPolicy || "fixtures"}
             paired={!!status?.account}
             busy={busy}
             act={act}
