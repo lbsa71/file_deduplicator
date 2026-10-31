@@ -210,3 +210,11 @@ Validation: 155 backend and 157 package tests pass. The synthetic extension E2E
 completed 161 fixture Google requests and exercised a failed preflight, explicit
 same-job retry, newly protected untitled shared membership, no write on that
 member, and exact coordinator resume. No real Google traffic was used by the test.
+
+The fix was deployed as `6b45bc8`. Production target 273 completed on attempt 2
+under its original worker job ID with an unchanged/kept receipt; the prior
+PROTOCOL failure is retained in the retry archive. The original coordinator was
+resumed, preserving its 272 completed steps. Live execution then passed target
+273 and produced further verified Trash receipts, with no new errors at the
+resume checkpoint. The sweep remains a running finite operation, not a completed
+full-account cleanup.
