@@ -66,6 +66,40 @@ class OriginalDownloadTests(unittest.TestCase):
         finally:
             media.pool.shutdown(wait=True)
 
+    def test_recovery_receipt_cannot_verify_another_account_or_changed_google_revision(self):
+        self.importer.import_one("alice", "google-a", "job-a", self.photo,
+                                 "https://lh3.googleusercontent.com/private")
+        for account, photo in [("google-b", self.photo), ("google-a", {**self.photo, "dedupKey": "changed"})]:
+            with self.assertRaises(ValueError):
+                self.importer.import_one("alice", account, "job-a", photo, None)
+        self.assertEqual(self.calls, 1)
+
+    def test_new_read_preserves_changed_google_identity_as_distinct_provenance(self):
+        first = self.importer.import_one("alice", "google-a", "job-a", self.photo,
+                                         "https://lh3.googleusercontent.com/private")
+        revised = {**self.photo, "dedupKey": "changed"}
+        second = self.importer.import_one("alice", "google-a", "job-b", revised,
+                                          "https://lh3.googleusercontent.com/private")
+        self.assertEqual(first["recordId"], second["recordId"])
+        sources = self.library.get(first["recordId"])["google_originals"]
+        self.assertEqual({s["dedupKey"] for s in sources}, {"dedup-a", "changed"})
+        self.assertEqual(self.importer.import_one("alice", "google-a", "job-b", revised, None), second)
+        self.assertEqual(self.calls, 2)
+
+    def test_original_transport_failure_reports_safe_class_without_private_url(self):
+        for failure, code in [(httpx.ConnectTimeout, "DOWNLOAD_CONNECT_TIMEOUT"),
+                              (httpx.ConnectError, "DOWNLOAD_CONNECT_ERROR"),
+                              (httpx.ReadTimeout, "DOWNLOAD_READ_TIMEOUT"),
+                              (httpx.ReadError, "DOWNLOAD_READ_ERROR"),
+                              (httpx.RemoteProtocolError, "DOWNLOAD_PROTOCOL")]:
+            def fetch(url):
+                raise failure("PRIVATE_SIGNED_URL_AND_TOKEN")
+            importer = OriginalImporter(self.library, fetch)
+            with self.assertRaisesRegex(ValueError, "^" + code + "$"):
+                importer.import_one("alice", "google-a", "failure-job", self.photo,
+                                    "https://lh3.googleusercontent.com/private")
+            self.assertEqual(len(self.library.listing()["items"]), 0)
+
     def test_interrupted_import_finalization_recovers_without_a_download_url_or_second_original(self):
         with patch.object(self.importer, "finalize", side_effect=OSError("process stopped after publication")):
             with self.assertRaises(OSError):

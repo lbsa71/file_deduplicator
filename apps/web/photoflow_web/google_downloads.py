@@ -94,6 +94,10 @@ class OriginalImporter:
                         if relative.endswith(SIDECAR):
                             record = load(self.library.path(relative))
                             if record["record_id"] == previous["recordId"] and previous["mediaKey"] == photo["mediaKey"] and previous["bytes"] == size:
+                                if not any(s.get("account") == account and s.get("mediaKey") == photo["mediaKey"]
+                                           and s.get("dedupKey") == photo["dedupKey"] and s.get("sha256") == previous["sha256"]
+                                           for s in record.get("google_originals", [])):
+                                    raise ValueError("Import receipt account or Google revision changed")
                                 if file_sha(self.library.path(record["file"]["relative_path"])) != previous["sha256"]:
                                     raise ValueError("Imported original changed")
                                 self.finalize(record, record["file"]["relative_path"], receipt_path, previous)
@@ -102,8 +106,15 @@ class OriginalImporter:
             approved_url(url)
             try:
                 raw, mime = self.fetch(url)
-            except httpx.HTTPError:
-                raise ValueError("Original transport failed") from None
+            except httpx.HTTPError as error:
+                code = next((code for kind, code in (
+                    (httpx.ConnectTimeout, "DOWNLOAD_CONNECT_TIMEOUT"),
+                    (httpx.ConnectError, "DOWNLOAD_CONNECT_ERROR"),
+                    (httpx.ReadTimeout, "DOWNLOAD_READ_TIMEOUT"),
+                    (httpx.ReadError, "DOWNLOAD_READ_ERROR"),
+                    (httpx.RemoteProtocolError, "DOWNLOAD_PROTOCOL"),
+                ) if isinstance(error, kind)), "DOWNLOAD_TRANSPORT")
+                raise ValueError(code) from None
             zipped = isinstance(raw, bytes) and raw.startswith(b"PK\x03\x04")
             if zipped:
                 if mime not in {"application/zip", "application/octet-stream"} or len(raw) > MAX_ORIGINAL:
@@ -158,7 +169,8 @@ class OriginalImporter:
                         record["resolved"]["capture_time"] = datetime.fromtimestamp(stamp / 1000, timezone.utc).isoformat().replace("+00:00", "Z")
                     moves = [{"from": stage, "to": target}]
                 sources = record.setdefault("google_originals", [])
-                if not any(s.get("account") == account and s.get("mediaKey") == photo["mediaKey"] for s in sources):
+                if not any(s.get("account") == account and s.get("mediaKey") == photo["mediaKey"]
+                           and s.get("dedupKey") == photo["dedupKey"] and s.get("sha256") == sha for s in sources):
                     sources.append({"account": account, "mediaKey": photo["mediaKey"], "dedupKey": photo["dedupKey"], "sha256": sha, "observation": photo})
                 self.library.event(record, owner, "google-original-imported" if outcome == "imported" else "google-original-reused", job=job)
                 result = self.result(photo, record["record_id"], sha, size, outcome)
