@@ -1,4 +1,10 @@
 const MAX_BODY = 1024 * 1024;
+const SAFE_NETWORK_ERRORS = new Set([
+  "net::ERR_ABORTED",
+  "net::ERR_FAILED",
+  "net::ERR_TIMED_OUT",
+  "net::ERR_BLOCKED_BY_CLIENT",
+]);
 const SAFE_HEADERS = new Set([
   "content-type",
   "content-length",
@@ -264,6 +270,10 @@ export class PassiveRecorder {
     }
     if (method === "Network.loadingFailed") {
       entry.failed = true;
+      if (SAFE_NETWORK_ERRORS.has(params.errorText))
+        entry.networkError = params.errorText;
+      if (typeof params.canceled === "boolean")
+        entry.canceled = params.canceled;
       this.#complete = false;
       this.#pending.delete(id);
       this.#append(entry);

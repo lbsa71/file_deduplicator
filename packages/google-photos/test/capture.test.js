@@ -317,3 +317,36 @@ test("missing, oversized, and malformed RPC request bodies mark evidence incompl
     );
   }
 });
+
+test("failed requests preserve safe cancellation evidence without exporting arbitrary error text", async () => {
+  for (const fixture of [
+    {
+      errorText: "net::ERR_ABORTED",
+      canceled: true,
+      expected: "net::ERR_ABORTED",
+    },
+    { errorText: "PRIVATE_URL_OR_TOKEN", canceled: false },
+  ]) {
+    const recorder = new PassiveRecorder({
+      send: () => {
+        throw new Error("No follow-up command is permitted");
+      },
+      now: () => 0,
+    });
+    await recorder.event("Network.requestWillBeSent", {
+      requestId: "a",
+      type: "Fetch",
+      request: { url: "https://photos.google.com/upload", method: "POST" },
+    });
+    await recorder.event("Network.loadingFailed", {
+      requestId: "a",
+      errorText: fixture.errorText,
+      canceled: fixture.canceled,
+    });
+    const capture = recorder.export();
+    assert.equal(capture.complete, false);
+    assert.equal(capture.entries[0].canceled, fixture.canceled);
+    assert.equal(capture.entries[0].networkError, fixture.expected);
+    assert.ok(!JSON.stringify(capture).includes("PRIVATE_"));
+  }
+});

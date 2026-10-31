@@ -122,3 +122,62 @@ test("evaluation adapter reports controlled errors without exposing browser exce
     (e) => e.code === "TRANSPORT" && !e.message.includes("SECRET"),
   );
 });
+
+test("failed reads identify a safe transport phase without exposing exception content", async () => {
+  const saved = {
+    location: globalThis.location,
+    WIZ_global_data: globalThis.WIZ_global_data,
+    fetch: globalThis.fetch,
+  };
+  try {
+    globalThis.location = new URL("https://photos.google.com/");
+    globalThis.WIZ_global_data = { ...session };
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      throw new TypeError("PRIVATE_FETCH_TOKEN");
+    };
+    const result = await pageRequest(request);
+    assert.deepEqual(result, {
+      error: "TRANSPORT",
+      diagnostic: { stage: "fetch", reason: "TypeError" },
+    });
+    assert.equal(calls, 1);
+    assert.ok(!JSON.stringify(result).includes("PRIVATE_"));
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
+
+test("a response stream failure is distinct from a fetch or parser failure", async () => {
+  const saved = {
+    location: globalThis.location,
+    WIZ_global_data: globalThis.WIZ_global_data,
+    fetch: globalThis.fetch,
+  };
+  try {
+    globalThis.location = new URL("https://photos.google.com/");
+    globalThis.WIZ_global_data = { ...session };
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new TypeError("PRIVATE_STREAM_URL"));
+          },
+        }),
+        { status: 200 },
+      );
+    };
+    const result = await pageRequest(request);
+    assert.deepEqual(result, {
+      error: "TRANSPORT",
+      diagnostic: { stage: "body", reason: "TypeError" },
+    });
+    assert.equal(calls, 1);
+    assert.ok(!JSON.stringify(result).includes("PRIVATE_"));
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});

@@ -52,6 +52,7 @@ export function pageRequest(request) {
     at: session.SNlM0e,
   }).toString();
   return (async () => {
+    let stage = "fetch";
     const controller = new AbortController(),
       timer = setTimeout(() => controller.abort(), 30000);
     try {
@@ -65,6 +66,7 @@ export function pageRequest(request) {
         body,
         signal: controller.signal,
       });
+      stage = "body";
       const chunks = [];
       let length = 0;
       const reader = response.body?.getReader();
@@ -87,13 +89,30 @@ export function pageRequest(request) {
         bytes.set(chunk, pos);
         pos += chunk.length;
       }
+      stage = "decode";
       return {
         account: request.account,
         status: response.status,
         body: new TextDecoder().decode(bytes),
       };
-    } catch {
-      return fail("TRANSPORT");
+    } catch (error) {
+      let reason = "UnknownError";
+      try {
+        if (
+          [
+            "AbortError",
+            "TypeError",
+            "RangeError",
+            "ReferenceError",
+            "SecurityError",
+            "SyntaxError",
+          ].includes(error?.name)
+        )
+          reason = error.name;
+      } catch {
+        /* Unknown page exceptions do not become diagnostic text. */
+      }
+      return { error: "TRANSPORT", diagnostic: { stage, reason } };
     } finally {
       clearTimeout(timer);
     }

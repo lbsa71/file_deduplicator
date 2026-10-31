@@ -1,3 +1,5 @@
+import { readFailureMessage } from "./diagnostics.js";
+
 const deadlines = {
   status: 5000,
   identity: 10000,
@@ -6,10 +8,10 @@ const deadlines = {
   export: 10000,
   inventory: 300000,
 };
-const failure = () =>
-  new Error(
-    "Extension response could not be verified. Check the Google Photos tab and sign-in.",
-  );
+class CommandFailure extends Error {}
+const failure = (
+  message = "Extension response could not be verified. Check the Google Photos tab and sign-in.",
+) => new CommandFailure(message);
 
 export function createCommandClient({
   chrome,
@@ -44,6 +46,8 @@ export function createCommandClient({
           tabId: tab?.id,
         });
         if (expired) return;
+        if (response?.ok === false)
+          throw failure(readFailureMessage(response.diagnostic) ?? undefined);
         if (
           response?.ok !== true ||
           !response.result ||
@@ -61,9 +65,10 @@ export function createCommandClient({
           throw failure();
         clearTimeout(timer);
         resolve(response.result);
-      })().catch(() => {
+      })().catch((error) => {
         clearTimeout(timer);
-        if (!expired) reject(failure());
+        if (!expired)
+          reject(error instanceof CommandFailure ? error : failure());
       });
     });
   };

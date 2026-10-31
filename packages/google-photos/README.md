@@ -112,6 +112,9 @@ sent to the browser: check capture status before repeating a capture command.
 The extension never uploads/favorites/deletes anything. **Read inventory counts**
 is a separate explicit action that issues read requests; it does not produce a
 retention-ready inventory because it does not enumerate every album's members.
+Read failures show fixed diagnostic codes and, for transport failures, the fetch,
+response-body or decoding phase with an allowlisted exception type. Arbitrary
+page exception messages, payloads and credentials are not displayed.
 
 Captures use passive CDP `Network` events and `getResponseBody`. They do not wrap
 page functions, intercept requests, or replay traffic. Strings/opaque IDs are
@@ -131,7 +134,9 @@ the browser session ends; nothing is sent to PhotoFlow or another server.
 
 Missing, oversized or malformed RPC request bodies and omitted structured response
 bodies set `complete: false` with a generic `captureError`. Intentional binary-body
-omission still applies. Capture completeness covers admitted traffic only; it does
+omission still applies. Failed network events retain a boolean cancellation flag
+when supplied and a small allowlist of network error codes; other error text is
+omitted. Capture completeness covers admitted traffic only; it does
 not establish a complete account inventory or qualify a mutation transport.
 
 ### Existing debugging connection

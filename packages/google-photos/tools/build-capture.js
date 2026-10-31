@@ -7,6 +7,7 @@ await mkdir(out, { recursive: true });
 for (const file of [
   "background.js",
   "commands.js",
+  "diagnostics.js",
   "popup.js",
   "popup.html",
   "popup.css",

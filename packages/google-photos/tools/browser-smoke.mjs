@@ -185,6 +185,30 @@ try {
   assert.equal(typeof omitted.entries[0].response.captureError, "string");
   assert.equal(actualRequests, 6, "An omitted body must not trigger a replay");
 
+  await page.evaluate(() => {
+    window.fetch = async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new TypeError("PRIVATE_RESPONSE_FAILURE"));
+          },
+        }),
+        { status: 200 },
+      );
+  });
+  await panel.locator("#inventory").click();
+  await panel.waitForFunction(() =>
+    document.querySelector("#status").textContent.includes("response body"),
+  );
+  const readFailure = await panel.locator("#status").textContent();
+  assert.ok(readFailure.includes("TypeError"));
+  assert.ok(!readFailure.includes("PRIVATE_"));
+  assert.equal(
+    actualRequests,
+    6,
+    "A failed response must not trigger another read",
+  );
+
   // Exercise the actual popup handler with a stalled browser injection. This
   // stays inside the synthetic profile and must not issue any photo request.
   await worker.evaluate(() => {
@@ -216,6 +240,7 @@ try {
       connectionCheckUi: true,
       connectionTimeoutVerified: true,
       sourceDirectoryRejected: true,
+      safeReadDiagnosticVerified: true,
     }),
   );
 } finally {

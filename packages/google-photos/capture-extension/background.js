@@ -1,6 +1,7 @@
 import { PassiveRecorder } from "./lib/capture.js";
 import { GooglePhotosClient } from "./lib/client.js";
 import { pageRequest, createPageTransport } from "./lib/browser.js";
+import { sanitizeReadDiagnostic } from "./diagnostics.js";
 let tabId = null,
   recorder = null,
   inflight = new Set(),
@@ -116,16 +117,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "inventory": {
         if (busy) throw new Error("Inspection already active");
         busy = true;
+        let diagnostic = null;
         try {
           const identity = await evaluate(message.tabId, pageRequest, {
             operation: "identity",
           });
-          if (!identity?.account)
+          if (!identity?.account) {
+            diagnostic = sanitizeReadDiagnostic({ code: identity?.error });
             throw new Error("Sign in to Google Photos first");
+          }
           const client = new GooglePhotosClient({
             account: identity.account,
             transport: createPageTransport({
-              evaluate: (fn, arg) => evaluate(message.tabId, fn, arg),
+              evaluate: async (fn, arg) => {
+                const result = await evaluate(message.tabId, fn, arg);
+                if (result?.error)
+                  diagnostic = sanitizeReadDiagnostic({
+                    ...result.diagnostic,
+                    code: result.error,
+                  });
+                return result;
+              },
             }),
           });
           const inventory = await client.inventory(),
@@ -140,6 +152,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             retentionReady: false,
           };
           return report;
+        } catch (error) {
+          const failure = new Error("Read inspection stopped");
+          failure.diagnostic =
+            diagnostic ?? sanitizeReadDiagnostic({ code: error?.code });
+          throw failure;
         } finally {
           busy = false;
         }
@@ -149,11 +166,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   })().then(
     (result) => sendResponse({ ok: true, result }),
-    () =>
+    (error) =>
       sendResponse({
         ok: false,
         error:
           "Operation stopped. Check the Google Photos tab, sign-in, and protocol compatibility.",
+        diagnostic: sanitizeReadDiagnostic(error?.diagnostic),
       }),
   );
   return true;

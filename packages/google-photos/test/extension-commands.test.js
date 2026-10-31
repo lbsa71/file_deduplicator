@@ -139,3 +139,42 @@ test("missing or invalid active tabs cannot send an extension command", async ()
     assert.equal(h.timers.size, 0);
   }
 });
+
+test("read failures expose only allowlisted diagnostic codes and phases", async () => {
+  const h = harness({
+    send: () => ({
+      ok: false,
+      error: "PRIVATE_TOKEN",
+      diagnostic: {
+        code: "TRANSPORT",
+        stage: "body",
+        reason: "TypeError",
+        details: "PRIVATE_URL",
+      },
+    }),
+  });
+  await assert.rejects(
+    h.command("inventory"),
+    (error) =>
+      /response body/i.test(error.message) &&
+      /TypeError/.test(error.message) &&
+      !error.message.includes("PRIVATE_"),
+  );
+  assert.deepEqual(h.calls, ["tabs", { action: "inventory", tabId: 7 }]);
+  const unknown = harness({
+    send: () => ({
+      ok: false,
+      diagnostic: {
+        code: "PRIVATE_TOKEN",
+        stage: "PRIVATE_STAGE",
+        reason: "PRIVATE_REASON",
+      },
+    }),
+  });
+  await assert.rejects(
+    unknown.command("inventory"),
+    (error) =>
+      /could not be verified/i.test(error.message) &&
+      !error.message.includes("PRIVATE_"),
+  );
+});
