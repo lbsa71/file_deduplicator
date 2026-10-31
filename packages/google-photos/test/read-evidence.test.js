@@ -3,6 +3,27 @@ import assert from "node:assert/strict";
 import * as capture from "../src/capture.js";
 import { envelope, item } from "./fixtures.js";
 
+test("envelope diagnostics distinguish fixed control tags without exposing unknown strings", () => {
+  const evidence = capture.sanitizeReadEvidence(
+    { rpc: "lcxiM", data: [] },
+    {
+      status: 200,
+      body:
+        ")]}'\n" +
+        JSON.stringify([
+          ["e", 4, null, null, 1000],
+          ["PRIVATE_UNKNOWN", 1],
+        ]),
+    },
+    new Error("Unexpected RPC identity or error"),
+  );
+  assert.deepEqual(evidence.envelopeRecords, [
+    { tag: "e", fields: 5 },
+    { tag: "unknown", fields: 2 },
+  ]);
+  assert.ok(!JSON.stringify(evidence).includes("PRIVATE_UNKNOWN"));
+});
+
 test("failed read evidence preserves sanitized payload and framing without private values", () => {
   const body = envelope("lcxiM", [[item("PRIVATE_MEDIA")], "PRIVATE_CURSOR"]);
   const evidence = capture.sanitizeReadEvidence(

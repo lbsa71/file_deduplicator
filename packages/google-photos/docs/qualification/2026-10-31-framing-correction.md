@@ -62,9 +62,20 @@ lengths, not the original lengths of now-redacted data.
 - Corrupt frame lengths, wrong RPC IDs, malformed payloads and duplicate RPC
   results reject after one read; no continuation request is sent.
 
-The framing correction is verified against the captured result and synthetic
-Chromium responses. A rebuilt-extension live check is pending manual Reload,
-which browser automation cannot perform on the extension-management page.
+The operator reloaded the corrected build. One live read passed frame validation
+and then stopped at `RPC_IDENTITY`. The returned `lcxiM` payload still has 500
+valid rows and a continuation cursor. No continuation request was reached.
+The sanitized export retains an additional five-field record with an aliased
+tag; its original tag cannot be recovered from that export. The decoder must
+continue rejecting it until its contract is identified. The framing correction
+is verified, but the inventory read is not yet successful.
+
+A follow-up diagnostic adds a bounded list of fixed envelope tags and record
+lengths, without arbitrary strings or values. A failing test first demonstrated
+the missing distinction; all 79 Linux tests and the Chromium extension test pass
+afterward. The rebuilt diagnostic requires manual Reload because browser
+automation cannot operate the extension-management page. No additional record
+type has been accepted by the parser.
 Successful pagination, favorites, albums, membership and details remain to be
 qualified. No retention-ready inventory or live mutation qualification is claimed.
 

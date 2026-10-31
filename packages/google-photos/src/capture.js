@@ -234,6 +234,23 @@ export function sanitizeReadEvidence(request, response, error) {
     .replace(/^\)\]\}'(?:\r?\n)?/, "")
     .split(/\r?\n/)
     .filter((line) => line.trim());
+  evidence.envelopeRecords = [];
+  const tags = new Set(["wrb.fr", "di", "af.httprm", "e", "er"]);
+  for (const line of lines.slice(0, 16)) {
+    try {
+      const records = JSON.parse(line);
+      if (!Array.isArray(records)) continue;
+      for (const record of records.slice(0, 32)) {
+        if (!Array.isArray(record)) continue;
+        evidence.envelopeRecords.push({
+          tag: tags.has(record[0]) ? record[0] : "unknown",
+          fields: record.length,
+        });
+      }
+    } catch {
+      /* No raw text from invalid lines is retained. */
+    }
+  }
   evidence.framing = {
     xssiPrefix: body.startsWith(")]}'"),
     totalBytes: new TextEncoder().encode(body).length,
