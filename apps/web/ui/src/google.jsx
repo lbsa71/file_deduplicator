@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { GoogleJobConsole } from "./google-job-console.jsx";
+import { pairWithExtension } from "./google-pairing.js";
 const labels = {
   unpaired: "Connect Google Photos",
   offline: "Google browser offline",
@@ -81,6 +82,28 @@ export function GoogleConnection({ api }) {
             disabled={busy || !account.trim()}
             onClick={() =>
               act(async () => {
+                const value = await call.current("/google/pairing", "POST", {
+                  account: account.trim(),
+                });
+                await pairWithExtension({
+                  account: account.trim(),
+                  code: value.code,
+                });
+                setPair(null);
+              })
+            }
+          >
+            Connect through installed extension
+          </button>
+          <p>
+            Open PhotoFlow and your signed-in Google Photos tab in the same
+            Chrome profile. Connect here without copying a code; the current
+            PhotoFlow address is used automatically.
+          </p>
+          <button
+            disabled={busy || !account.trim()}
+            onClick={() =>
+              act(async () => {
                 setPair(
                   await call.current("/google/pairing", "POST", {
                     account: account.trim(),
@@ -135,6 +158,7 @@ export function GoogleConnection({ api }) {
           <GoogleJobConsole
             operations={status?.operations || []}
             paired={!!status?.account}
+            account={status?.account}
             busy={busy}
             act={act}
             call={(...args) => call.current(...args)}

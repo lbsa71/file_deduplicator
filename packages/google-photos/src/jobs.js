@@ -276,6 +276,30 @@ export function validateResult(kind, result, operation) {
       "Invalid download result",
     );
     fieldId(result.mediaKey);
+  } else if (kind === "original") {
+    keys(result, [
+      "mediaKey",
+      "recordId",
+      "sha256",
+      "bytes",
+      "outcome",
+      "retentionReady",
+    ]);
+    requireThat(
+      Object.keys(result).length === 6 &&
+        /^[a-f0-9]{64}$/.test(result.sha256) &&
+        /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
+          result.recordId,
+        ) &&
+        ["imported", "already-present"].includes(result.outcome),
+      "Invalid original import receipt",
+    );
+    fieldId(result.mediaKey);
+    number(result.bytes, 1);
+    requireThat(
+      result.bytes <= 16 * 1024 * 1024,
+      "Original exceeds import limit",
+    );
   } else if (kind === "mutation") {
     keys(result, ["verified", "outcome", "albumId", "retentionReady"]);
     requireThat(

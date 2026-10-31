@@ -36,7 +36,8 @@ JOB_PROTOCOL_VERSION = 2
 
 
 class WorkerStore:
-    def __init__(self, directory, now=time.time, test_account=""):
+    def __init__(self, directory, now=time.time, test_account="", original_receipt=lambda ident: None):
+        self.original_receipt = original_receipt
         self.test_account = test_account
         self.now = now
         directory = Path(directory) / "google-workers"
@@ -383,13 +384,15 @@ class WorkerStore:
             if error is None:
                 JOB_SPECS[row["operation"]]["validate_result"](result)
                 value = json.loads(row["input"])
-                if row["operation"] in ("photo-details", "download-link"):
+                if row["operation"] in ("photo-details", "download-link", "download-original"):
                     key = (
                         result["photo"]["mediaKey"]
                         if row["operation"] == "photo-details"
                         else result["mediaKey"]
                     )
                     check(key == photo_key(value["photoUrl"]))
+                if row["operation"] == "download-original":
+                    check(result == self.original_receipt(ident))
                 if row["operation"] == "hash-candidates":
                     check(
                         all(item["hash"] in value["hashes"] for item in result["items"])
@@ -566,7 +569,12 @@ class WorkerStore:
 def install_worker_routes(
     app, library, session, authorized=lambda owner: True, test_account=""
 ):
-    store = WorkerStore(library.state, test_account=test_account)
+    from .google_downloads import OriginalImporter
+    from .core import load
+    importer = OriginalImporter(library)
+    app.state.google_originals = importer
+    store = WorkerStore(library.state, test_account=test_account,
+                        original_receipt=lambda ident: load(importer.receipt_path(ident)))
     active = {}
     app.state.google_workers = store
 
@@ -579,9 +587,65 @@ def install_worker_routes(
         for event in active.values():
             event.set()
 
+    @app.post("/api/v1/google/originals/{ident}")
+    async def import_original(ident: str, req: Request):
+        check(extension(req.headers.get("origin")))
+        raw = bytearray()
+        async for part in req.stream():
+            raw.extend(part)
+            check(len(raw) <= 128 * 1024)
+        body = json.loads(raw)
+        check(isinstance(body, dict) and set(body) == {"photo", "url", "account", "lease"})
+        auth = req.headers.get("authorization", "")
+        check(auth.startswith("Bearer "))
+        token = auth[7:]
+        def active():
+            worker = store.authenticate(token, body["account"])
+            check(authorized(worker["owner"]))
+            with store.db() as db:
+                row = db.execute("SELECT * FROM jobs WHERE id=? AND worker=?", (ident, worker["id"])).fetchone()
+            check(row and row["operation"] == "download-original" and row["state"] == "running"
+                  and row["lease"] == body["lease"] and row["started"] > store.now() - 600)
+            check(body["photo"]["mediaKey"] == photo_key(json.loads(row["input"])["photoUrl"]))
+            return worker
+        JOB_SPECS["photo-details"]["validate_result"]({"photo": body["photo"], "retentionReady": False})
+        worker = active()
+        try:
+            return await asyncio.to_thread(importer.import_one, worker["owner"], body["account"], ident,
+                                           body["photo"], body["url"], active)
+        except (ValueError, OSError) as error:
+            reasons = {
+                "GOOGLE_AUTH_REQUIRED": "GOOGLE_AUTH_REQUIRED", "GOOGLE_REDIRECT": "GOOGLE_REDIRECT", "GOOGLE_HTTP": "GOOGLE_HTTP",
+                "Original transport failed": "DOWNLOAD_TRANSPORT",
+                "Original byte size disagrees with Google details": "DOWNLOAD_SIZE",
+                "Original image format disagrees with metadata": "DOWNLOAD_FORMAT",
+                "Expected exactly one original in archive": "ZIP_MEMBER_COUNT",
+                "Original archive target or size disagrees with Google details": "ZIP_TARGET",
+                "Invalid original archive": "ZIP_INVALID",
+            }
+            code = reasons.get(str(error), "ORIGINAL_VALIDATION")
+            __import__("logging").getLogger("photoflow.google_downloads").warning("Original transfer stopped: %s", code)
+            raise HTTPException(400, {"code": code}) from None
+
     @app.get("/api/v1/google/status")
     async def status(req: Request):
         return store.status(session(req, 3)["username"])
+
+    @app.post("/api/v1/google/local-matches")
+    async def local_matches(req: Request, body: dict):
+        from .google_identity import LocalGoogleMatches
+        owner = session(req, 3, True)["username"]
+        check(set(body) == {"account", "photoUrls"})
+        check(isinstance(body["photoUrls"], list) and 0 < len(body["photoUrls"]) <= 100)
+        account = store.status(owner)["account"]
+        if not account or body["account"] != account:
+            raise HTTPException(409, "Refresh the paired Google account before checking local originals")
+        targets = [{"namespace": "library-media", "mediaKey": photo_key(url)} for url in body["photoUrls"]]
+        result = await asyncio.to_thread(LocalGoogleMatches(library).check, account, targets)
+        session(req, 3, True)
+        if store.status(owner)["account"] != account:
+            raise HTTPException(409, "Google account changed during verification")
+        return result
 
     @app.post("/api/v1/google/pairing")
     async def pairing(req: Request, body: dict):

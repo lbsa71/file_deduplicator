@@ -86,6 +86,15 @@
     },
     "result": "download"
   },
+  "download-original": {
+    "label": "Download one original into this library",
+    "version": 1,
+    "effect": "read",
+    "fields": {
+      "photoUrl": "photoUrl"
+    },
+    "result": "original"
+  },
   "favorite-set": {
     "label": "Set favorite",
     "version": 1,

@@ -4,6 +4,8 @@ import { pageRequest, createPageTransport } from "./lib/browser.js";
 import { inspectSelection } from "./lib/inspection.js";
 import { installDesktopWorker } from "./desktop.js";
 import { sanitizeReadDiagnostic } from "./diagnostics.js";
+import { readFailureMessage } from "./diagnostics.js";
+import { pairFromPage } from "./lib/page-pairing.js";
 let tabId = null,
   recorder = null,
   inflight = new Set(),
@@ -64,6 +66,23 @@ chrome.debugger.onDetach.addListener((source) => {
   }
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.action === "page-pair" && sender.id === chrome.runtime.id) {
+    pairFromPage(message, sender, {
+      tabs: () => chrome.tabs.query({ url: "https://photos.google.com/*" }),
+      identity: (id) => evaluate(id, pageRequest, { operation: "identity" }),
+      pair: (selection) => desktop.command("worker-pair", selection),
+    }).then(
+      (result) => sendResponse({ ok: true, result }),
+      (error) =>
+        sendResponse({
+          ok: false,
+          message:
+            readFailureMessage(error?.diagnostic) ||
+            "Pairing stopped. Check the signed-in Google Photos tab and the selected PhotoFlow server.",
+        }),
+    );
+    return true;
+  }
   if (
     sender.id !== chrome.runtime.id ||
     !sender.url?.startsWith(chrome.runtime.getURL(""))

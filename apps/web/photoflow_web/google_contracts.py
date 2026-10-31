@@ -240,6 +240,13 @@ def validate_result(operation, spec, result):
             and result["available"] is True
         )
         field("id", result["mediaKey"])
+    elif kind == "original":
+        check(set(result) == {"mediaKey", "recordId", "sha256", "bytes", "outcome", "retentionReady"})
+        field("id", result["mediaKey"])
+        check(isinstance(result["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", result["sha256"]))
+        check(isinstance(result["recordId"], str) and re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", result["recordId"]))
+        integer(result["bytes"], 1, 16 * 1024**2)
+        check(result["outcome"] in ("imported", "already-present"))
     elif kind == "mutation":
         check(
             set(result) <= {"verified", "outcome", "albumId", "retentionReady"}

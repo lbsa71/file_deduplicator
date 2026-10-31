@@ -96,6 +96,96 @@ Do not blindly restore the backup if other tunnel routes have changed since.
 
 ## Build, test, and update
 
+### Local extension debugging on macOS
+
+Install the dependencies and build the UI using the commands below, then run:
+
+```sh
+.venv/bin/python apps/web/dev.py
+npm run build:capture --prefix packages/google-photos
+```
+
+Open `https://localhost:8099` in Chrome. The development runner creates a
+self-signed localhost server certificate (`CA:FALSE`). Background HTTPS/WSS needs
+a trusted certificate even when a page exception allows the app to load. On macOS,
+explicitly trust this certificate for SSL in your user keychain (this changes local
+certificate trust):
+
+```sh
+security add-trusted-cert -r trustRoot -p ssl -k "$HOME/Library/Keychains/login.keychain-db" .local/web/cert.pem
+```
+
+The certificate name is only `localhost`. Do not use `-s localhost`: Chrome ignores
+macOS trust entries with that extra policy constraint. The certificate expires in
+30 days; replacing it requires explicitly trusting its replacement. Keys and
+certificates remain under `.local/`, outside Git.
+
+Sign in as `dev` with password `local-development-only`. The server listens only
+on loopback and uses a persistent, initially empty library and state under the
+gitignored `.local/web/`. It uses development authentication instead of Linux PAM
+and disables Google mutation pilot configuration. No real photo library is needed.
+
+Load `packages/google-photos/dist/capture-extension/` as an unpacked extension,
+or reload that same extension after each rebuild. Open PhotoFlow and a signed-in
+Google Photos tab in the same Chrome profile. Allow extension access to localhost
+if Chrome requests it. Expand **Connect Google Photos**, enter the Google account,
+and click **Connect through installed extension**. The app creates and redeems the
+code automatically using its current address and the matching Google account.
+The in-app browser cannot use Chrome's installed extension.
+
+macOS previews require `brew install vips` (and `ffmpeg` for video posters).
+The decoder wrapper retains CPU, file-size and descriptor limits. Linux also
+uses a 512 MiB address-space limit; macOS rejects that limit, so its supervisor
+samples the decoder process tree's resident memory and terminates the group above
+512 MiB or the wall deadline. Memory sampling is periodic, not a kernel allocation
+limit. Imported originals now publish the final verified filesystem signature so
+thumbnails can render immediately; an interrupted finalization replays its local
+receipt without downloading again. Darwin file and directory publication uses
+atomic `renamex_np(RENAME_EXCL)` and rejects occupied destinations.
+
+The popup remains available for manual pairing with other HTTPS endpoints. Its
+endpoint preference survives failed pairing and reopening. Existing pairings
+remain bound to their original server until re-paired.
+
+Restart the Python process after backend edits; rebuild the UI after frontend
+edits. Rebuild and reload the extension after its code changes. Local runtime data
+survives restarts. `download-link` probes availability; `download-original` imports
+one JPEG, PNG or WebP original up to 16 MiB. Select **Download one original into
+this library** in the operation workbench and supply a library photo URL.
+The extension obtains a short-lived reference and sends it over authenticated
+HTTPS; the server downloads without Google cookies. Signed references are never
+stored in jobs, sidecars or logs. A single-member Google ZIP is read in memory,
+with exact filename/size checks and no filesystem extraction. Motion photos with
+companions, multi-file archives, redirects and unsupported formats stop the import.
+Original bytes are validated and SHA-256 checked against local originals before
+committing. Repeating a job returns its durable receipt; a new job rechecks bytes
+and reports `already-present` without creating another original. Google observations
+are preserved in the sidecar's `google_originals` field; this is not Takeout metadata
+round-trip qualification. The transfer requires a current worker token, account,
+running job, matching target and lease. A local import never authorizes cloud deletion.
+
+In the same workbench, enter a library photo URL and click **Check local original**.
+The check uses the currently paired account and the sidecar's explicit
+`google_originals` associations. It rehashes mapped active originals and returns
+links to verified local records. Unmapped IDs, trash, stale sidecars, changed bytes,
+unavailable files and conflicting associations have distinct outcomes. Unmapped
+does not prove absence: legacy Takeout URLs without account attribution are not
+automatically associated. The disposable identity index is rebuilt from sidecars
+with the catalog. Checks accept at most 100 explicit library-media targets, inspect
+at most 100 candidate mappings per target, and hash at most 256 MiB per request;
+larger checks remain deferred or ambiguous. The UI checks one selected photo.
+This makes no Google requests and never treats a saved Google ID as proof of current
+remote byte equality, complete backup, or cloud retention eligibility.
+
+The worker smoke test covers rejected-code diagnostics, endpoint persistence,
+page-based pairing, WSS, all typed jobs, and account-bound local verification using
+synthetic Google responses.
+It uses port 8100 alongside development on 8099. Set
+`PHOTOFLOW_TEST_PAGE_TLS_ONLY=1` only to reproduce background TLS failures with its
+untrusted disposable certificate; that diagnostic negative test is expected to fail.
+
+### Standard build
+
 Use Python 3.11+ and Node 22 for development/browser tests. Install system ExifTool,
 libvips, ffmpeg, and PAM runtime libraries. Preserve the configured ExifTool version
 when upgrading. From repository root:

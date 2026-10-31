@@ -31,7 +31,7 @@ class StorageTests(unittest.TestCase):
         return Runner(fs or self.fs, FakeClock(datetime.now(timezone.utc)),
                       FakeIds(), MetadataReader(), Config(settle_seconds=0))
 
-    @unittest.skipUnless(sys.platform == 'linux', 'Linux no-overwrite rename adapter')
+    @unittest.skipUnless(sys.platform in ('linux', 'darwin'), 'Atomic no-overwrite rename adapter')
     def test_creation_updates_and_moves_do_not_require_hard_links(self):
         with patch('photoflow.adapters.os.link', side_effect=OSError(errno.EOPNOTSUPP, 'no hard links')):
             self.fs.atomic_write('inbox/photo.jpg', b'photo', replace=False)
@@ -68,7 +68,7 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(self.fs.read_bytes('destination.jpg'), b'foreign')
         self.assertTrue((self.root / 'directory.jpg').is_dir())
 
-    @unittest.skipUnless(sys.platform == 'linux', 'Linux no-overwrite directory rename')
+    @unittest.skipUnless(sys.platform in ('linux', 'darwin'), 'Atomic no-overwrite directory rename')
     def test_directory_publish_preserves_the_tree_and_rejects_existing_targets(self):
         self.fs.atomic_write('staging/album/photo.jpg', b'photo', replace=False)
         self.fs.atomic_write('inbox/existing/keep.jpg', b'keep', replace=False)
@@ -82,13 +82,14 @@ class StorageTests(unittest.TestCase):
         self.assertFalse(self.fs.exists('staging'))
         self.assertEqual(self.fs.read_bytes('inbox/published/album/photo.jpg'), b'photo')
 
-    @unittest.skipUnless(sys.platform == 'linux', 'Linux no-overwrite rename adapter')
+    @unittest.skipUnless(sys.platform in ('linux', 'darwin'), 'Atomic no-overwrite rename adapter')
     def test_unsupported_no_overwrite_rename_fails_without_an_unsafe_fallback(self):
         self.fs.atomic_write('source.jpg', b'original', replace=False)
         def unsupported(*args):
             ctypes.set_errno(errno.EOPNOTSUPP)
             return -1
-        with patch('photoflow.adapters._linux_renameat2', return_value=unsupported):
+        adapter = '_linux_renameat2' if sys.platform == 'linux' else '_darwin_renamex'
+        with patch('photoflow.adapters.' + adapter, return_value=unsupported):
             with self.assertRaises(OSError) as move_error:
                 self.fs.move_no_replace('source.jpg', 'destination.jpg')
             with self.assertRaises(OSError) as write_error:
@@ -99,6 +100,23 @@ class StorageTests(unittest.TestCase):
         self.assertFalse(self.fs.exists('destination.jpg'))
         self.assertFalse(self.fs.exists('record.json'))
         self.assertFalse(list(self.root.rglob('.photoflow-tmp-*')))
+
+    @unittest.skipUnless(sys.platform in ('linux', 'darwin'), 'Atomic no-overwrite directory rename')
+    def test_competing_directory_publications_keep_one_complete_tree(self):
+        for name in ('first', 'second'):
+            self.fs.atomic_write(name + '/image.jpg', name.encode(), replace=False)
+        def publish(name):
+            try:
+                _rename_no_replace(self.root / name, self.root / 'published')
+                return name
+            except FileExistsError:
+                return None
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            winners = [name for name in pool.map(publish, ('first', 'second')) if name]
+        self.assertEqual(len(winners), 1)
+        self.assertEqual(self.fs.read_bytes('published/image.jpg'), winners[0].encode())
+        loser = 'second' if winners[0] == 'first' else 'first'
+        self.assertEqual(self.fs.read_bytes(loser + '/image.jpg'), loser.encode())
 
     def test_real_filesystem_recovery_at_each_commit_boundary(self):
         for boundary in ('journal', 'moved', 'new-sidecar', 'old-sidecar', 'complete'):

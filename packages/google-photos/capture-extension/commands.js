@@ -50,7 +50,7 @@ export function createCommandClient({
         const response = await chrome.runtime.sendMessage({
           action,
           tabId: tab?.id,
-          ...(action === "worker-pair" ? { code: selection?.code } : {}),
+          ...(action === "worker-pair" ? { code: selection?.code, origin: selection?.origin } : {}),
           ...(action === "inspect"
             ? {
                 selection: {

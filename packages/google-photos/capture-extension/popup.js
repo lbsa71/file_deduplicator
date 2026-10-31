@@ -1,12 +1,27 @@
 import { createCommandClient } from "./commands.js";
+import {
+  workerOrigin,
+  readWorkerOrigin,
+  saveWorkerOrigin,
+} from "./lib/worker-origin.js";
 
 const status = document.querySelector("#status");
 const command = createCommandClient({ chrome });
 const buttons = [...document.querySelectorAll("button")];
 let busy = false;
+const endpoint = document.querySelector("#worker-origin");
+endpoint.addEventListener("change", async () => {
+  try {
+    await saveWorkerOrigin(chrome.storage.local, endpoint.value.trim());
+  } catch {
+    status.textContent =
+      "Enter an HTTPS server address without a path, credentials, query or fragment.";
+  }
+});
 function setBusy(value) {
   busy = value;
   for (const button of buttons) button.disabled = value;
+  endpoint.disabled = value;
 }
 for (const id of [
   "start",
@@ -27,6 +42,19 @@ for (const id of [
     status.textContent =
       id === "inventory" ? "Reading Google Photos…" : "Working…";
     try {
+      let origin;
+      if (id === "worker-pair") {
+        origin = workerOrigin(
+          document.querySelector("#worker-origin").value.trim(),
+        );
+        // Start permission request within the click gesture, before awaiting storage.
+        const permission = chrome.permissions.request({
+          origins: [origin + "/*"],
+        });
+        await saveWorkerOrigin(chrome.storage.local, origin);
+        if (!(await permission))
+          throw new Error("PhotoFlow server access was not granted");
+      }
       const selection =
         id === "inspect"
           ? {
@@ -38,7 +66,7 @@ for (const id of [
       const result = await command(
         id,
         id === "worker-pair"
-          ? { code: document.querySelector("#pair-code").value.trim() }
+          ? { code: document.querySelector("#pair-code").value.trim(), origin }
           : selection,
       );
       if (id === "worker-pair") document.querySelector("#pair-code").value = "";
@@ -70,6 +98,8 @@ for (const id of [
   });
 setBusy(true);
 try {
+  const worker = await command("worker-status");
+  endpoint.value = await readWorkerOrigin(chrome.storage.local, worker.origin);
   const result = await command("status");
   status.textContent = result.recording
     ? `Recording (${result.count} requests). Return here to stop and download.`

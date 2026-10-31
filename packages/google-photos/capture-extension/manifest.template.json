@@ -3,16 +3,18 @@
   "name": "PhotoFlow Google Photos",
   "version": "0.3.0",
   "description": "Run typed PhotoFlow Google Photos jobs with sanitized diagnostics and gated isolated-account pilots.",
-  "permissions": [
-    "activeTab",
-    "debugger",
-    "scripting",
-    "storage",
-    "alarms"
-  ],
+  "permissions": ["activeTab", "debugger", "scripting", "storage", "alarms"],
   "host_permissions": [
     "https://photos.google.com/*",
     "https://photos.lbsa71.net/*"
+  ],
+  "optional_host_permissions": ["https://*/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://photos.lbsa71.net/*", "https://localhost/*"],
+      "js": ["page.js"],
+      "run_at": "document_start"
+    }
   ],
   "background": {
     "service_worker": "background.js",

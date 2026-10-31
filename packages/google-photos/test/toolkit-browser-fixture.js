@@ -12,6 +12,7 @@ export function toolkitBrowserFixture() {
     albums: [["album-a", "PhotoFlow test existing"]],
     writes: [],
     failNextWrite: false,
+    originalSize: 100,
   };
   let calls = 0;
   const photo = () => {
@@ -31,7 +32,7 @@ export function toolkitBrowserFixture() {
     row[2] = "photoflow-test-fixture.jpg";
     row[3] = state.timestamp;
     row[4] = state.timezone;
-    row[5] = 100;
+    row[5] = state.originalSize;
     row[11] = "dedup-media-a";
     row[13] = state.location ? [state.location] : null;
     row[19] = state.member ? [albumRow(state.albums[0])] : [];

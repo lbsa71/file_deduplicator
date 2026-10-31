@@ -4,7 +4,7 @@ import { JOBS, capabilities } from "../src/jobs.js";
 import { item, album } from "./fixtures.js";
 import { parseItem, parseAlbum } from "../src/protocol.js";
 test("every registered operation rejects extra inputs and advertises its own version", () => {
-  assert.equal(Object.keys(JOBS).length, 22);
+  assert.equal(Object.keys(JOBS).length, 23);
   for (const [name, spec] of Object.entries(JOBS)) {
     assert.throws(() => spec.validateInput({ arbitraryRpc: "anything" }));
     assert.ok(

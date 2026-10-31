@@ -1,6 +1,28 @@
 import React, { useState } from "react";
 import { readSuite, pilotSuite } from "./google-jobs.js";
-export function GoogleJobConsole({ operations, paired, busy, act, call }) {
+const matchLabels = {
+  "verified-local": "Local original verified",
+  unmapped: "No account-bound local mapping. A local copy may still exist.",
+  "local-trash": "The mapped local original is in Trash.",
+  "local-content-changed": "Local bytes no longer match the imported original.",
+  "stale-local-metadata":
+    "Local metadata changed. Rescan the library and check again.",
+  "local-unavailable": "The mapped local original is unavailable.",
+  "remote-details-changed": "Google details differ from the saved association.",
+  "verification-deferred":
+    "Verification reached its size budget. The original remains unverified.",
+  ambiguous: "Conflicting local mappings need investigation.",
+  "needs-investigation":
+    "Local copies have different verification results. Review the details.",
+};
+export function GoogleJobConsole({
+  operations,
+  paired,
+  account,
+  busy,
+  act,
+  call,
+}) {
   const [photoUrl, setPhoto] = useState(""),
     [albumId, setAlbum] = useState(""),
     [hashes, setHashes] = useState(""),
@@ -11,7 +33,12 @@ export function GoogleJobConsole({ operations, paired, busy, act, call }) {
     ),
     [confirmed, setConfirmed] = useState(false),
     [plan, setPlan] = useState(null),
-    [output, setOutput] = useState(null);
+    [output, setOutput] = useState(null),
+    [localMatch, setLocalMatch] = useState(null);
+  const visibleMatch =
+    localMatch?.account === account && localMatch?.photoUrl === photoUrl.trim()
+      ? localMatch
+      : null;
   const selected = operations.find((x) => x.operation === operation);
   const writesEnabled = operations.some(
     (x) => x.effect === "write" && x.enabled,
@@ -61,6 +88,46 @@ export function GoogleJobConsole({ operations, paired, busy, act, call }) {
           placeholder="https://photos.google.com/photo/…"
         />
       </label>
+      <button
+        disabled={busy || !paired || !photoUrl.trim()}
+        onClick={() =>
+          act(async () => {
+            setLocalMatch(null);
+            const url = photoUrl.trim();
+            const result = await call("/google/local-matches", "POST", {
+              account,
+              photoUrls: [url],
+            });
+            setLocalMatch({ account, photoUrl: url, result });
+          })
+        }
+      >
+        Check local original
+      </button>
+      {visibleMatch && (
+        <section aria-label="Local original verification">
+          <p role="status">
+            {matchLabels[visibleMatch.result.items[0].state] ||
+              "Local original remains unverified."}
+          </p>
+          <p>
+            Checks the saved association for {account} and current local bytes.
+            Current Google byte equality and cloud removal safety remain
+            unverified.
+          </p>
+          {visibleMatch.result.items[0].recordIds.map((id) => (
+            <p key={id}>
+              <a href={`/photos/${encodeURIComponent(id)}`}>
+                Open local original
+              </a>
+            </p>
+          ))}
+          <details>
+            <summary>Verification details</summary>
+            <pre>{JSON.stringify(visibleMatch.result, null, 2)}</pre>
+          </details>
+        </section>
+      )}
       <label>
         Selected album ID
         <input value={albumId} onChange={(e) => setAlbum(e.target.value)} />

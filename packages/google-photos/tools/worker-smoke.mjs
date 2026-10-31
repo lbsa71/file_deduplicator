@@ -10,7 +10,7 @@ import { ACCOUNT } from "../test/fixtures.js";
 import { toolkitBrowserFixture } from "../test/toolkit-browser-fixture.js";
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const temp = await mkdtemp(join(tmpdir(), "google-worker-browser-"));
-const endpoint = "https://127.0.0.1:8099";
+const endpoint = "https://localhost:8100";
 const server = spawn(
   process.env.PHOTOFLOW_TEST_PYTHON || "python3",
   ["apps/web/tests/google_worker_fixture.py"],
@@ -20,6 +20,7 @@ const server = spawn(
       ...process.env,
       PYTHONPATH: "apps/web:apps/photoflow",
       PHOTOFLOW_GOOGLE_TEST_ACCOUNT: ACCOUNT,
+      PHOTOFLOW_WORKER_FIXTURE_PORT: "8100",
     },
     stdio: ["ignore", "pipe", "pipe"],
   },
@@ -33,14 +34,6 @@ try {
   await cp(new URL("../dist/capture-extension/", import.meta.url), extension, {
     recursive: true,
   });
-  const desktop = join(extension, "desktop.js");
-  await writeFile(
-    desktop,
-    (await readFile(desktop, "utf8")).replace(
-      "https://photos.lbsa71.net",
-      endpoint,
-    ),
-  );
   const manifest = JSON.parse(
     await readFile(join(extension, "manifest.json"), "utf8"),
   );
@@ -51,7 +44,9 @@ try {
     channel: "chromium",
     ignoreHTTPSErrors: true,
     args: [
-      "--ignore-certificate-errors",
+      ...(process.env.PHOTOFLOW_TEST_PAGE_TLS_ONLY
+        ? []
+        : ["--ignore-certificate-errors"]),
       `--disable-extensions-except=${extension}`,
       `--load-extension=${extension}`,
     ],
@@ -69,6 +64,12 @@ try {
     await new Promise((r) => setTimeout(r, 100));
   }
   assert.ok(healthy, errors);
+  const originalInfo = await context.request.get(
+    endpoint + "/fixture-original-info",
+  );
+  assert.ok(originalInfo.ok());
+  fixture.state.originalSize = (await originalInfo.json()).size;
+  assert.ok(Number.isSafeInteger(fixture.state.originalSize));
   ui = await context.newPage();
   await ui.goto(endpoint + "/login");
   await ui.locator("[name=username]").fill("fixture");
@@ -76,13 +77,6 @@ try {
   await ui.getByRole("button", { name: "Sign in", exact: true }).click();
   await ui.getByRole("button", { name: /Connect Google Photos/ }).click();
   await ui.getByLabel("Google account", { exact: true }).fill(ACCOUNT);
-  await ui
-    .getByRole("button", { name: "Create pairing code and open Google Photos" })
-    .click();
-  await ui.getByLabel("Pairing code", { exact: true }).waitFor();
-  const code = await ui
-    .getByLabel("Pairing code", { exact: true })
-    .inputValue();
   const google = await context.newPage();
   await google.goto("https://photos.google.com/");
   const worker =
@@ -96,16 +90,50 @@ try {
   await panel.goto(
     `chrome-extension://${new URL(worker.url()).hostname}/popup.html`,
   );
+  await panel.getByLabel("PhotoFlow server endpoint").fill(endpoint);
   await panel.evaluate((id) => {
     chrome.tabs.query = async () => [{ id }];
   }, tabId);
-  await panel.locator("#pair-code").fill(code);
+  await panel.locator("#pair-code").fill("x".repeat(43));
   await panel.locator("#worker-pair").click();
+  await panel.getByText(/PhotoFlow rejected pairing/).waitFor();
+  await panel.reload();
+  await panel.waitForFunction(
+    (origin) => document.querySelector("#worker-origin")?.value === origin,
+    endpoint,
+  );
+  // Normal app UI now performs pairing without opening the extension popup.
+  await ui
+    .getByRole("button", {
+      name: "Connect through installed extension",
+      exact: true,
+    })
+    .click();
   await ui
     .getByRole("button", { name: "✓ Google connected", exact: true })
     .waitFor({ timeout: 30000 });
+  await ui.getByText(/2 items, 1 favorites, 1 albums/).waitFor();
   assert.ok(await ui.getByText(/2 items, 1 favorites, 1 albums/).count());
   assert.equal(fixture.calls, 4);
+  // Reopening the popup must restore the endpoint bound to this pairing.
+  await panel.reload();
+  await panel.waitForFunction(
+    (origin) =>
+      document.querySelector("#worker-origin")?.value === origin &&
+      !document.querySelector("#worker-status")?.disabled,
+    endpoint,
+  );
+  await panel.locator("#worker-status").click();
+  await panel.waitForFunction((origin) => {
+    try {
+      return (
+        JSON.parse(document.querySelector("#status").textContent).origin ===
+        origin
+      );
+    } catch {
+      return false;
+    }
+  }, endpoint);
   const [download] = await Promise.all([
     panel.waitForEvent("download"),
     panel.locator("#worker-diagnostics").click(),
@@ -231,12 +259,96 @@ try {
     { timeout: 30000 },
   );
   assert.equal(fixture.state.writes.length, writesBefore);
+  await ui
+    .getByLabel("Individual operation", { exact: true })
+    .selectOption("download-original");
+  await ui
+    .getByLabel("Job input JSON", { exact: true })
+    .fill(
+      JSON.stringify({ photoUrl: "https://photos.google.com/photo/media-a" }),
+    );
+  for (const count of [29, 30]) {
+    await ui
+      .getByRole("button", { name: "Queue selected operation", exact: true })
+      .click();
+    await ui.waitForFunction(
+      (count) => {
+        const jobs = [...document.querySelectorAll(".google-panel ol>li")];
+        return (
+          jobs.length === count &&
+          jobs.every((e) => e.textContent.includes("succeeded"))
+        );
+      },
+      count,
+      { timeout: 30000 },
+    );
+  }
+  const imported = await ui.evaluate(async () => {
+    const status = await (await fetch("/api/v1/google/status")).json();
+    return Promise.all(
+      status.jobs
+        .slice(0, 2)
+        .map(
+          async (job) =>
+            (await (await fetch(`/api/v1/google/jobs/${job.id}/result`)).json())
+              .result,
+        ),
+    );
+  });
+  assert.deepEqual(
+    imported.map((r) => r.outcome),
+    ["already-present", "imported"],
+  );
+  assert.equal(imported[0].recordId, imported[1].recordId);
+  await ui
+    .getByRole("button", { name: "Check local original", exact: true })
+    .click();
+  const localMatch = ui.getByRole("region", {
+    name: "Local original verification",
+  });
+  await localMatch
+    .getByText("Local original verified", { exact: true })
+    .waitFor();
+  assert.equal(
+    await localMatch
+      .getByRole("link", { name: "Open local original" })
+      .getAttribute("href"),
+    `/photos/${imported[0].recordId}`,
+  );
+  await ui
+    .getByLabel("Selected library photo URL", { exact: true })
+    .fill("https://photos.google.com/photo/not-mapped");
+  assert.equal(
+    await localMatch.count(),
+    0,
+    "old verification must disappear when target changes",
+  );
+  await ui
+    .getByRole("button", { name: "Check local original", exact: true })
+    .click();
+  await localMatch
+    .getByText(
+      "No account-bound local mapping. A local copy may still exist.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(await localMatch.getByRole("link").count(), 0);
+  assert.equal(
+    await ui.locator(".google-panel ol>li").count(),
+    30,
+    "local checks must not queue Google jobs",
+  );
   console.log(
     JSON.stringify({
       pairing: true,
+      pagePairing: true,
+      failedPairingPreservesEndpoint: true,
       wss: true,
-      jobsCompleted: 28,
-      fixtureOperationTypes: 22,
+      jobsCompleted: 30,
+      fixtureOperationTypes: 23,
+      directOriginalImport: true,
+      duplicateOriginalSkipped: true,
+      accountBoundLocalVerification: true,
       lostWriteReconciledWithoutReplay: true,
       googleRequests: fixture.calls,
       phases: true,

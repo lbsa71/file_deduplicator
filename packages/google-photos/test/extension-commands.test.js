@@ -41,6 +41,40 @@ function harness({ query, send } = {}) {
   };
 }
 
+test("pairing forwards the selected endpoint together with its one-time code", async () => {
+  const h = harness();
+  await h.command("worker-pair", {
+    code: "pair-code",
+    origin: "https://localhost:8099",
+  });
+  assert.deepEqual(h.calls, [
+    "tabs",
+    {
+      action: "worker-pair",
+      tabId: 7,
+      code: "pair-code",
+      origin: "https://localhost:8099",
+    },
+  ]);
+});
+
+test("pairing fetch failures explain endpoint and certificate checks without leaking private errors", async () => {
+  const h = harness({
+    send: async () => ({
+      ok: false,
+      diagnostic: { code: "PAIR_FETCH", reason: "PRIVATE_TOKEN" },
+      error: "PRIVATE_TOKEN",
+    }),
+  });
+  await assert.rejects(
+    h.command("worker-pair", {
+      code: "code",
+      origin: "https://localhost:8099",
+    }),
+    /PhotoFlow.*certificate/,
+  );
+});
+
 test("a stalled connection check reaches a timeout without retrying or issuing another command", async () => {
   const h = harness({ send: () => new Promise(() => {}) });
   let outcome = "waiting";

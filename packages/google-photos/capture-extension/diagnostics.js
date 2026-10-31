@@ -1,4 +1,18 @@
 const messages = {
+  PAIR_ENDPOINT:
+    "Enter a valid HTTPS PhotoFlow server address without a path, credentials, query or fragment.",
+  PAIR_PERMISSION:
+    "Allow Chrome access to the selected PhotoFlow server, then pair again.",
+  PAIR_CODE: "Enter a fresh pairing code created by this PhotoFlow server.",
+  PAIR_TAB:
+    "Select a signed-in Google Photos tab in Chrome, then open this extension and pair again.",
+  PAIR_SESSION: "Sign in to Google Photos in Chrome before pairing.",
+  PAIR_FETCH:
+    "PhotoFlow could not be reached. Open the selected endpoint in Chrome and check its certificate warning and that the local server is running. Then use a fresh pairing code.",
+  PAIR_HTTP:
+    "PhotoFlow rejected pairing. Create a fresh code on the selected endpoint for the same Google account and try again.",
+  PAIR_REPLY:
+    "PhotoFlow returned an invalid pairing reply. Pairing was not saved.",
   ORIGIN: "Open the Google Photos tab before checking reads.",
   SESSION: "Google Photos read-session data is unavailable (SESSION).",
   ACCOUNT: "The Google Photos account changed during the read (ACCOUNT).",

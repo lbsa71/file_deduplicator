@@ -19,7 +19,9 @@ class TakeoutExtractionTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
+        # Match LocalFileSystem's canonical root (macOS /var aliases /private/var)
+        # so interruption hooks exercise the intended filesystem boundary.
+        self.root = Path(temporary.name).resolve()
 
     def archive(self, name=NAME, entries=None):
         (self.root / name).parent.mkdir(parents=True, exist_ok=True)

@@ -311,13 +311,20 @@ must still be performed and reported separately.
 ## Desktop job worker (0.3 / protocol 2)
 
 The extension now pairs with PhotoFlow and opens an outbound WSS connection.
-The versioned catalogue registers 22 typed jobs: inventory and bounded pages,
+The versioned catalogue registers 23 typed jobs: inventory and bounded pages,
 selected item/album details, quota, opaque hash candidates, original-download
 availability, eleven isolated mutation pilots, and read-only reconciliation.
 The server persists validated results and progress with `retentionReady: false`.
 Google cookies/session values remain in the browser; the server credential is a
 separate PhotoFlow token. The download probe does not transfer image bytes and
-image-upload jobs are not implemented in this release.
+image-upload jobs are not implemented in this release. `download-original` obtains
+a transient download reference and uses an authenticated HTTPS transfer endpoint
+to let PhotoFlow fetch one original directly without Google cookies. Image bytes
+and signed URLs never travel in WSS job results. The receipt contains a local
+record ID, SHA-256, byte count, and `imported`/`already-present` outcome. This initial
+path supports JPEG/PNG/WebP up to 16 MiB and single-member ZIPs; known companions
+and multi-file archives stop before import. See the web development guide and
+[single-original qualification](docs/qualification/2026-10-31-single-original.md).
 
 The workbench prepares finite read/pilot suites or a single typed operation. Pilot
 writes require an operator-configured separate disposable Google account, explicit
@@ -330,10 +337,30 @@ The standalone exports `./worker`, `./jobs`, `./google-job-handlers`, `./toolkit
 transport executor, explicit versioned contracts, and bounded sanitized evidence.
 Handlers receive phase/reporting hooks and must be registered explicitly. Server
 and extension capability sets must match. The application adapter lives in
-`capture-extension/desktop.js`; it is pinned to photos.lbsa71.net.
+`capture-extension/desktop.js`. The popup's **PhotoFlow server endpoint** defaults
+to `https://photos.lbsa71.net`. Set it to another HTTPS origin (for local work,
+`https://localhost:8099`) before pairing. Chrome requests access only to that
+server. The endpoint is saved with the pairing and reused after browser restarts;
+changing servers requires a new pairing code. Existing pairings retain the
+production default. Paths, embedded credentials, query strings and fragments are
+rejected. The same extension build supports development and production. The popup
+also remembers an endpoint preference independently of a successful pairing, so a
+failed attempt does not reset it or redirect an existing worker.
+
+On production PhotoFlow or HTTPS localhost, open the app and signed-in Google
+Photos in the same Chrome profile and use **Connect through installed extension**.
+A pairing-only content script transfers the single-use code to the worker; it
+binds the endpoint to the sender's origin, selects the matching Google account,
+and never returns credentials to the page. Other origins and subframes are refused.
+No extension popup or manual code copying is required for that flow. Local TLS
+trust setup is documented in the web application's development guide.
 
 Use **Download worker diagnostics** to export the latest job's returned read shapes
 and phases, and **Worker status** for controlled connection state/close code.
+After WSS reconnection, an immediate identity-only heartbeat restores readiness
+when the expected Google session is present; it does not enumerate photos. A
+failed job remains an attention state until a successful job, independently of
+whether the account identity still matches.
 Evidence is capped at eight entries/512 KiB and aliases are job-local. Server
 job exports contain phase/error/attempt information rather than Google payloads.
 See [ADR 0004](../../apps/web/spec/adr/0004-desktop-google-worker.md) for the exact

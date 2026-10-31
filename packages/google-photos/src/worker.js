@@ -60,6 +60,7 @@ export class DesktopWorker {
     this.handlers = handlers ?? { "inventory-counts": runInventory };
     this.seen = new Map();
     this.ready = false;
+    this.lastJobFailed = false;
     this.authenticated = false;
     this.stopped = false;
   }
@@ -119,6 +120,7 @@ export class DesktopWorker {
         "ACCOUNT",
       );
       this.authenticated = true;
+      await this.heartbeat();
       this.timer = this.setInterval(() => void this.heartbeat(), 20000);
       return;
     }
@@ -186,10 +188,12 @@ export class DesktopWorker {
       );
       await phase("complete");
       this.ready = true;
+      this.lastJobFailed = false;
       result = { type: "result", id: message.id, lease: message.lease, result };
     } catch (error) {
       diagnostics.failure(error);
       this.ready = false;
+      this.lastJobFailed = true;
       await phase("failed");
       result = {
         type: "result",
@@ -205,7 +209,8 @@ export class DesktopWorker {
   }
   async heartbeat() {
     try {
-      if ((await this.getAccount()) !== this.account) this.ready = false;
+      this.ready =
+        !this.lastJobFailed && (await this.getAccount()) === this.account;
     } catch {
       this.ready = false;
     }

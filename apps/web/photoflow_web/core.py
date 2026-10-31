@@ -67,6 +67,8 @@ class Library:
                 "CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,path TEXT,revision TEXT,data TEXT,stamp TEXT); CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner TEXT,state TEXT,data TEXT);"
             )
             create_indexes(db)
+            from .google_identity import create_identity_index
+            create_identity_index(db)
 
     @contextmanager
     def db(self):
@@ -217,6 +219,8 @@ class Library:
             if connection is not None
             else self.db()
         ) as db:
+            from .google_identity import index_google_identities
+            index_google_identities(db, record)
             index_record(db, record)
             db.execute(
                 "INSERT OR REPLACE INTO listing VALUES(?,?,?,?,?,?,?,?)",
@@ -293,7 +297,7 @@ class Library:
             missing = sorted(ids - set(seen))
             for start in range(0, len(missing), 64):
                 targets = [(ident,) for ident in missing[start : start + 64]]
-                for table in ("photos", "listing", "query_labels", "query_properties"):
+                for table in ("photos", "listing", "query_labels", "query_properties", "google_identities"):
                     db.executemany(f"DELETE FROM {table} WHERE id=?", targets)
                 db.commit()
         return len(seen)

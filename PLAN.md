@@ -1,5 +1,42 @@
 # PhotoFlow implementation plan
 
+## Active service completion audit — 2026-10-31
+
+The active target is the web first-release specification (including every
+acceptance gate in `apps/web/spec/08-delivery.md`) and the accepted Google Photos
+integration designs. Existing milestones below provide historical evidence;
+completion requires current implementation and verification. Work proceeds one
+feature at a time, continuing with another feature when a gate is externally blocked.
+
+| Area | Current evidence / remaining work |
+| --- | --- |
+| Local development and worker connection | Running HTTPS scratch library; page-based Chrome pairing and live inventory verified; endpoint preference survives failed pairing. Reconnect now reports readiness after matching the signed-in account, without requiring another photo read; failed-job attention remains latched until a successful job |
+| One Google original | Direct anonymous server fetch, single-member ZIP validation, transactional import and full-content duplicate suppression verified live; bounded to standalone JPEG/PNG/WebP under 16 MiB |
+| Media and viewer (P01–P03, B02) | macOS decoder supervision and libvips installation complete; the live imported image renders all five WebP levels and original hash is unchanged. Imports now publish verified final fingerprints; interrupted finalization replays without another download. Format/color/orientation, scheduling, persisted failure/retry, capabilities and measured budgets still need audit |
+| Filesystem/folders (F01–F04, T01–T03) | Darwin `renamex_np(RENAME_EXCL)` added alongside Linux atomic moves; eight real storage contracts, collision races and web folder/restore tests pass on macOS. Full acceptance gates remain subject to platform/deployment audit |
+| Authentication (A01–A03) | Existing PAM/roles/CSRF tests; full broker fault/session-revocation/SSE matrix and session administration remain |
+| Browsing and metadata (B01–B02, M01–M03) | Existing catalog, filters, saved views and batch edits; stable cursor pagination, date precision, full location/keyboard/touch/accessibility and virtualization remain |
+| Upload/export (U01–U05, D01–D02) | Existing resumable uploads and byte-preserving exports; cancellation/expiry/type/checksum/fault and resumable export gates need audit |
+| Trash/purge (T01–T04) | Recoverable trash exists; atomic subtree promotion/restore and explicit manifest-bound administrator purge remain |
+| Durable operations (J01–J03, OPS-01) | Persistent statuses exist; restart-safe dispatch, safe-boundary cancellation/retry, authenticated SSE, watcher reconciliation and targeted dependencies remain |
+| Google reconciliation | Worker read jobs and isolated mutation pilots exist; larger originals/companions, image upload qualification, identity mapping, review/planning and metadata-round-trip integration remain. Cloud mutation enablement still requires the specified isolated-account evidence |
+| Release/operations (O01–O03) | Linux/exFAT/PAM/SMB integration, capacity/failure measurements, backup restore, format capability report and complete release artifacts need current gate-by-gate evidence |
+
+The first local implementation sequence is media rendering, Darwin filesystem
+operations, durable job control/events, then the remaining user and integration
+workflows. A blocked deployment or cloud qualification gate does not block local
+implementation and synthetic verification of other requirements.
+
+Latest checkpoint: 120 core service tests, 87 web tests and 126 Google package
+tests pass on macOS; the synthetic extension E2E completes 30 jobs over 23
+operation types. Live extension reload restored readiness with zero additional
+photo jobs. Live
+authenticated rendering produced 64/256/512/1024/2048 bounds (768/6,850/24,582/
+85,594/225,344 bytes); all were WebP without EXIF/profile payloads, and the
+301,586-byte original retained its SHA-256. These are one-image functional checks,
+not proof of the full format or performance acceptance matrix. The next slice is
+durable operation control, including restart behavior, cancellation/retry and events.
+
 This plan distills the *Fotohantering* conversation. Later decisions supersede
 earlier sketches: one finite batch command, no database, adjacent JSON records,
 and UUID filenames rather than original names or content-addressed paths.

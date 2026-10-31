@@ -36,6 +36,11 @@ export const CATALOG = {
     { photoUrl: "photoUrl" },
     "download",
   ),
+  "download-original": read(
+    "Download one original into this library",
+    { photoUrl: "photoUrl" },
+    "original",
+  ),
   "favorite-set": write("Set favorite", {
     photoUrl: "photoUrl",
     value: "bool",

@@ -58,7 +58,7 @@ test("worker authenticates on WSS, executes only bounded read operation and retu
   await h.worker.receive(job);
   assert.deepEqual(
     h.sent.filter((m) => m.type !== "progress").map((m) => m.type),
-    ["auth", "result"],
+    ["auth", "heartbeat", "result"],
   );
   assert.equal(h.sent.find((m) => m.type === "result").result.photos, 10);
   assert.equal(
@@ -106,4 +106,45 @@ test("duplicate delivery cannot run a read twice and failed reads emit only cont
   assert.equal(calls, 1);
   assert.equal(h.sent.find((m) => m.type === "result").error, "PROTOCOL");
   assert.ok(!JSON.stringify(h.sent).includes("PRIVATE_TOKEN"));
+});
+
+test("a reconnected worker reports readiness from the matching session without a photo job", async () => {
+  let reads = 0;
+  const h = setup(async () => {
+    reads++;
+  });
+  h.worker.start();
+  await h.worker.receive({
+    type: "welcome",
+    account: "account-a",
+    protocol: 2,
+  });
+  assert.deepEqual(h.sent.at(-1), {
+    type: "heartbeat",
+    account: "account-a",
+    ready: true,
+  });
+  assert.equal(reads, 0);
+  h.worker.getAccount = async () => "other";
+  await h.worker.heartbeat();
+  assert.equal(h.sent.at(-1).ready, false);
+  h.worker.getAccount = async () => "account-a";
+  await h.worker.heartbeat();
+  assert.equal(h.sent.at(-1).ready, true);
+  assert.equal(reads, 0);
+});
+
+test("matching identity alone does not clear a failed job", async () => {
+  const h = setup(async () => {
+    throw new Error("read failed");
+  });
+  h.worker.start();
+  await h.worker.receive({
+    type: "welcome",
+    account: "account-a",
+    protocol: 2,
+  });
+  await h.worker.receive(job);
+  await h.worker.heartbeat();
+  assert.equal(h.sent.at(-1).ready, false);
 });

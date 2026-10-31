@@ -30,12 +30,29 @@ def _linux_renameat2():
     return rename
 
 
+@lru_cache(maxsize=1)
+def _darwin_renamex():
+    try:
+        rename = ctypes.CDLL(None, use_errno=True).renamex_np
+    except AttributeError as error:
+        raise OSError(errno.ENOSYS, 'libc renamex_np is required for no-overwrite moves') from error
+    rename.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint)
+    rename.restype = ctypes.c_int
+    return rename
+
+
 def _rename_no_replace(source, target):
     if sys.platform == 'linux':
         # AT_FDCWD=-100, RENAME_NOREPLACE=1. One kernel operation rejects
         # occupied destinations, including on exFAT. Never fall back to an
         # exists()/rename() pair, which could overwrite a concurrent arrival.
         if _linux_renameat2()(-100, os.fsencode(source), -100, os.fsencode(target), 1):
+            error = ctypes.get_errno()
+            raise OSError(error, os.strerror(error), os.fspath(target))
+    elif sys.platform == 'darwin':
+        # Darwin's RENAME_EXCL rejects an occupied destination atomically for
+        # both files and directories; never emulate it with exists()/rename().
+        if _darwin_renamex()(os.fsencode(source), os.fsencode(target), 0x00000004):
             error = ctypes.get_errno()
             raise OSError(error, os.strerror(error), os.fspath(target))
     else:

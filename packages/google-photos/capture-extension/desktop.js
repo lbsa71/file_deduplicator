@@ -4,7 +4,12 @@ import { JOB_PROTOCOL_VERSION } from "./lib/jobs.js";
 import { DesktopWorker } from "./lib/worker.js";
 import { GooglePhotosClient } from "./lib/client.js";
 import { pageRequest, createPageTransport } from "./lib/browser.js";
-const origin = "https://photos.lbsa71.net";
+import { workerOrigin } from "./lib/worker-origin.js";
+function pairingFailure(code) {
+  return Object.assign(new Error("PhotoFlow pairing stopped"), {
+    diagnostic: { code },
+  });
+}
 export function installDesktopWorker(evaluate) {
   let worker = null,
     state = "unpaired",
@@ -44,6 +49,9 @@ export function installDesktopWorker(evaluate) {
       state = "unpaired";
       return;
     }
+    const origin = workerOrigin(saved.origin);
+    if (!(await chrome.permissions.contains({ origins: [origin + "/*"] })))
+      throw new Error("PhotoFlow endpoint permission required");
     state = "connecting";
     const current = new DesktopWorker({
       account: saved.account,
@@ -52,6 +60,33 @@ export function installDesktopWorker(evaluate) {
       getAccount: async () => (await account()).account,
       handlers: createGoogleJobHandlers({
         journal,
+        importOriginal: async (expected, original, context) => {
+          if (!context.isActive() || (await account()).account !== expected)
+            throw Object.assign(new Error(), { code: "ACCOUNT" });
+          const response = await fetch(
+            origin + "/api/v1/google/originals/" + context.job.id,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Bearer " + saved.token,
+              },
+              credentials: "omit",
+              redirect: "error",
+              signal: AbortSignal.timeout(120000),
+              body: JSON.stringify({
+                ...original,
+                account: expected,
+                lease: context.job.lease,
+              }),
+            },
+          );
+          if (response.status !== 200)
+            throw Object.assign(new Error("Original transfer stopped"), {
+              code: "HTTP",
+            });
+          return response.json();
+        },
         readerFactory: async (expected, context) => {
           const selected = await account();
           if (selected.account !== expected)
@@ -146,10 +181,15 @@ export function installDesktopWorker(evaluate) {
       };
     if (action === "worker-status")
       return {
-        state,
+        state: worker?.authenticated
+          ? worker.ready
+            ? "connected"
+            : "needs_login"
+          : state,
         paired: !!(await credentials()),
         protocol: JOB_PROTOCOL_VERSION,
         lastCloseCode,
+        origin: workerOrigin((await credentials())?.origin),
       };
     if (action === "worker-disconnect") {
       await stop();
@@ -162,15 +202,25 @@ export function installDesktopWorker(evaluate) {
       return { state };
     }
     if (action !== "worker-pair") throw new Error("Unsupported worker action");
+    let origin;
+    try {
+      origin = workerOrigin(message.origin);
+    } catch {
+      throw pairingFailure("PAIR_ENDPOINT");
+    }
+    if (!(await chrome.permissions.contains({ origins: [origin + "/*"] })))
+      throw pairingFailure("PAIR_PERMISSION");
     if (
       typeof message.code !== "string" ||
       !/^[A-Za-z0-9_-]{43}$/.test(message.code)
     )
-      throw new Error("Invalid pairing code");
+      throw pairingFailure("PAIR_CODE");
     const identity = await bounded(() =>
       evaluate(message.tabId, pageRequest, { operation: "identity" }),
-    );
-    if (!identity?.account) throw new Error("Google sign-in required");
+    ).catch(() => {
+      throw pairingFailure("PAIR_TAB");
+    });
+    if (!identity?.account) throw pairingFailure("PAIR_SESSION");
     const response = await fetch(origin + "/api/v1/google/pair", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -178,20 +228,28 @@ export function installDesktopWorker(evaluate) {
       credentials: "omit",
       redirect: "error",
       signal: AbortSignal.timeout(10000),
+    }).catch(() => {
+      throw pairingFailure("PAIR_FETCH");
     });
-    if (response.status !== 200) throw new Error("Pairing failed");
-    const paired = await response.json();
+    if (response.status !== 200) throw pairingFailure("PAIR_HTTP");
+    const paired = await response.json().catch(() => {
+      throw pairingFailure("PAIR_REPLY");
+    });
     if (
+      !paired ||
+      typeof paired !== "object" ||
       paired.account !== identity.account ||
+      typeof paired.token !== "string" ||
+      typeof paired.worker_id !== "string" ||
       !/^[-_A-Za-z0-9]{64}$/.test(paired.token) ||
       !/^[a-f0-9]{32}$/.test(paired.worker_id)
     )
-      throw new Error("Invalid pairing reply");
+      throw pairingFailure("PAIR_REPLY");
     await stop();
     await chrome.storage.local.setAccessLevel({
       accessLevel: "TRUSTED_CONTEXTS",
     });
-    await chrome.storage.local.set({ googleWorker: paired });
+    await chrome.storage.local.set({ googleWorker: { ...paired, origin } });
     blocked = false;
     backoff = 1000;
     await resume();

@@ -5,6 +5,7 @@ export function createGoogleJobHandlers({
   writeFactory,
   journal,
   countsHandler,
+  importOriginal,
 }) {
   return Object.fromEntries(
     Object.keys(JOBS).map((operation) => [
@@ -58,6 +59,32 @@ export function createGoogleJobHandlers({
           const key = photoKey(input.photoUrl);
           await reader.downloadLink(key);
           return { mediaKey: key, available: true, retentionReady: false };
+        }
+        if (operation === "download-original") {
+          const key = photoKey(input.photoUrl);
+          const photo = await reader.observation(key);
+          JOBS["photo-details"].validateResult({
+            photo,
+            retentionReady: false,
+          });
+          if (photo.companion === true)
+            throw Object.assign(
+              new Error("Motion-photo companions need a paired import"),
+              { code: "PRECONDITION" },
+            );
+          if (!importOriginal || !context.isActive() || photo.mediaKey !== key)
+            throw Object.assign(new Error("Original transfer is unavailable"), {
+              code: "PRECONDITION",
+            });
+          const reference = await reader.downloadLink(key);
+          await context.phase("sending");
+          if (!context.isActive())
+            throw Object.assign(new Error(), { code: "TRANSPORT" });
+          return importOriginal(
+            account,
+            { photo, url: reference.url },
+            context,
+          );
         }
         if (operation === "inventory-counts") {
           await context.phase("library");
