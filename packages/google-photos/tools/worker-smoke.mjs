@@ -11,6 +11,7 @@ import { toolkitBrowserFixture } from "../test/toolkit-browser-fixture.js";
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const temp = await mkdtemp(join(tmpdir(), "google-worker-browser-"));
 const endpoint = "https://localhost:8100";
+const targetPolicy = process.env.PHOTOFLOW_TEST_PILOT_POLICY || "fixtures";
 const server = spawn(
   process.env.PHOTOFLOW_TEST_PYTHON || "python3",
   ["apps/web/tests/google_worker_fixture.py"],
@@ -19,8 +20,9 @@ const server = spawn(
     env: {
       ...process.env,
       PYTHONPATH: "apps/web:apps/photoflow",
-      PHOTOFLOW_GOOGLE_TEST_ACCOUNT: ACCOUNT,
       PHOTOFLOW_WORKER_FIXTURE_PORT: "8100",
+      PHOTOFLOW_GOOGLE_PILOT_ACCOUNT: ACCOUNT,
+      PHOTOFLOW_GOOGLE_PILOT_TARGET_POLICY: targetPolicy,
     },
     stdio: ["ignore", "pipe", "pipe"],
   },
@@ -51,7 +53,9 @@ try {
       `--load-extension=${extension}`,
     ],
   });
-  const fixture = toolkitBrowserFixture();
+  const fixture = toolkitBrowserFixture({
+    personal: targetPolicy === "selected",
+  });
   await context.route("https://photos.google.com/**", (route) =>
     fixture.route(route),
   );
@@ -166,7 +170,7 @@ try {
     .fill("opaque");
   await ui
     .getByText(
-      "I am testing synthetic media in the configured isolated account.",
+      "I authorize this finite pilot on the selected photos in the configured account.",
       { exact: true },
     )
     .click();
@@ -340,6 +344,7 @@ try {
   );
   console.log(
     JSON.stringify({
+      targetPolicy,
       pairing: true,
       pagePairing: true,
       failedPairingPreservesEndpoint: true,

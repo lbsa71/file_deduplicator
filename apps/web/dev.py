@@ -47,6 +47,8 @@ def main():
 
     # Production pilot configuration must not silently enable writes locally.
     os.environ.pop("PHOTOFLOW_GOOGLE_TEST_ACCOUNT", None)
+    os.environ.pop("PHOTOFLOW_GOOGLE_PILOT_ACCOUNT", None)
+    os.environ.pop("PHOTOFLOW_GOOGLE_PILOT_TARGET_POLICY", None)
     app = create_app(root, base / "state", auth=authenticate,
                      role_resolver=lambda name: 3 if name == "dev" else 0)
     print("Local PhotoFlow: https://localhost:8099 — dev / local-development-only", flush=True)

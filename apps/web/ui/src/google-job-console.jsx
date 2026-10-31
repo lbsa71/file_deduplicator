@@ -22,15 +22,14 @@ export function GoogleJobConsole({
   busy,
   act,
   call,
+  targetPolicy = "fixtures",
 }) {
   const [photoUrl, setPhoto] = useState(""),
     [albumId, setAlbum] = useState(""),
     [hashes, setHashes] = useState(""),
     [operation, setOperation] = useState("photo-details"),
     [input, setInput] = useState("{}"),
-    [metadata, setMetadata] = useState(
-      '{"timestampSec": 1700000000, "timezoneSec": 0}',
-    ),
+    [metadata, setMetadata] = useState("{}"),
     [confirmed, setConfirmed] = useState(false),
     [plan, setPlan] = useState(null),
     [output, setOutput] = useState(null),
@@ -75,10 +74,11 @@ export function GoogleJobConsole({
     <details className="google-job-console">
       <summary>Operation workbench and qualification suite</summary>
       <p>
-        Each job reports its own result. Personal accounts support reads only.
-        Write pilots require an independently configured isolated test account,
-        a small image named photoflow-test-… and a private album named PhotoFlow
-        test ….
+        Each job reports its own result. Writes require an explicitly authorized
+        account and a finite plan with exact targets.{" "}
+        {targetPolicy === "selected"
+          ? "Selected-photo policy is enabled: personal images and private albums are allowed."
+          : "Fixture policy requires small photoflow-test-… images and private PhotoFlow test … albums."}
       </p>
       <label>
         Selected library photo URL
@@ -153,7 +153,8 @@ export function GoogleJobConsole({
           disabled={!writesEnabled}
           onChange={(e) => setConfirmed(e.target.checked)}
         />
-        I am testing synthetic media in the configured isolated account.
+        I authorize this finite pilot on the selected photos in the configured
+        account.
       </label>
       <button
         disabled={busy}
@@ -179,8 +180,12 @@ export function GoogleJobConsole({
           <pre>{JSON.stringify(plan, null, 2)}</pre>
           <p>
             Independent reads continue after a failed check. Failed or uncertain
-            checks block later writes in this suite. Timestamp changes persist
-            on the synthetic image; the new test album remains for inspection.
+            checks block later writes in this suite. This suite changes
+            metadata: it ends with favorite/archive off, description cleared,
+            and the photo removed from the selected album and restored from
+            Trash. Optional timestamp changes persist and optional manual
+            location is cleared. The new test album remains. It does not restore
+            all previous values.
           </p>
           <button
             disabled={busy || !paired}

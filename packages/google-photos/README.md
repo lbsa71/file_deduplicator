@@ -8,8 +8,8 @@ This release implements strict read adapters, a guarded mutation executor,
 documented API uploading, retention decisions, durable journals, and passive
 capture tools. It is tested against synthetic browser interactions and sanitized
 Toolkit fixtures. **Live inventory/favorites/album-list enumeration is qualified for the tested
-account. Other live operations remain pending; production cloud cleanup is disabled.** The browser transport permits personal-account reads and explicitly scoped
-isolated-account mutation pilots. Production cloud mutations remain gated.
+account. Other live operations remain pending; production cloud cleanup is disabled.** The browser transport permits reads and explicitly account-bound mutation
+pilots under fixture or owner-authorized selected-target policies. Production cloud mutations remain gated.
 
 ## Install and test
 
@@ -109,7 +109,10 @@ instead of staying on "Working…". Other popup commands also have deadlines;
 none is automatically retried. A timeout does not cancel an operation already
 sent to the browser: check capture status before repeating a capture command.
 
-The extension never uploads/favorites/deletes anything. **Read inventory counts**
+Passive capture and the popup's inspection actions do not mutate photos. The
+paired desktop worker can separately execute explicitly authorized pilot writes
+under [ADR 0006](../../apps/web/spec/adr/0006-account-authorized-google-pilots.md).
+It has no permanent-delete or image-upload job. **Read inventory counts**
 is a separate explicit action that issues read requests; it does not produce a
 retention-ready inventory because it does not enumerate every album's members.
 Read failures show fixed diagnostic codes and, for transport failures, the fetch,
@@ -308,12 +311,12 @@ read; check status before starting another operation.
 This probe has synthetic browser coverage. Live selected-album/photo qualification
 must still be performed and reported separately.
 
-## Desktop job worker (0.3 / protocol 2)
+## Desktop job worker (0.3.1 / protocol 2)
 
 The extension now pairs with PhotoFlow and opens an outbound WSS connection.
 The versioned catalogue registers 23 typed jobs: inventory and bounded pages,
 selected item/album details, quota, opaque hash candidates, original-download
-availability, eleven isolated mutation pilots, and read-only reconciliation.
+availability, eleven account-authorized mutation pilots, and read-only reconciliation.
 The server persists validated results and progress with `retentionReady: false`.
 Google cookies/session values remain in the browser; the server credential is a
 separate PhotoFlow token. The download probe does not transfer image bytes and
@@ -327,10 +330,14 @@ and multi-file archives stop before import. See the web development guide and
 [single-original qualification](docs/qualification/2026-10-31-single-original.md).
 
 The workbench prepares finite read/pilot suites or a single typed operation. Pilot
-writes require an operator-configured separate disposable Google account, explicit
-confirmation, small synthetic images and private test albums. The default production
-configuration enables reads only. See [ADR 0005](../../apps/web/spec/adr/0005-google-job-qualification.md)
-for setup, all operations, fixture requirements and unknown-outcome recovery.
+writes require an operator-configured account and explicit confirmation. The default
+fixture policy permits small synthetic images and private test albums. With the
+owner's authorization, the selected-target policy also permits personal images and
+selected private albums. No configured account means reads only. See
+[ADR 0006](../../apps/web/spec/adr/0006-account-authorized-google-pilots.md) for the
+personal-account opt-in and remaining guards, and
+[ADR 0005](../../apps/web/spec/adr/0005-google-job-qualification.md) for all operations
+and unknown-outcome recovery.
 
 The standalone exports `./worker`, `./jobs`, `./google-job-handlers`, `./toolkit-pilot`,
 `./browser-journal` and `./job-diagnostics` provide the

@@ -8,8 +8,12 @@ sidecars are authoritative; indexes and caches must remain rebuildable.
 Use strict TDD for behavior changes: write a failing behavioral test, implement
 the smallest coherent change, then refactor with the tests passing. Inject
 filesystem, clock, identifiers, network transport, and external tools at their
-boundaries. Test deterministic domain logic directly. Use synthetic media and
-isolated accounts/libraries for mutation tests, never the family archive.
+boundaries. Test deterministic domain logic directly. Automated tests use synthetic media
+and isolated accounts/libraries. Live mutation qualification defaults to disposable
+fixtures. An owner may explicitly authorize a finite, exact-target pilot on their
+backed-up personal account after accepting the risks; record that authorization
+and configure the account and selected-target policy explicitly. A backup alone
+never grants permission, and this exception does not enable unattended cleanup.
 
 From the repository root:
 
@@ -80,7 +84,8 @@ or target IDs, unknown flags, incomplete pages, expired sessions, partial writes
 lost acknowledgements, and changed inputs between planning and execution. Assert
 that prohibited follow-up calls were never sent, not merely that an error was
 logged. Verify a new adapter against controlled fixtures and a disposable live
-test set before enabling its mutations on the real archive.
+test set, or an explicitly owner-authorized personal-account pilot, before enabling
+that operation in production. Keep live qualification distinct from synthetic tests.
 
 ## Preservation and provenance
 
@@ -97,6 +102,9 @@ count enumeration is qualified; other operations and production cloud mutations
 remain gated. Follow [ADR 0004](apps/web/spec/adr/0004-desktop-google-worker.md)
 when adding job types and collecting diagnostic evidence.
 
-Typed job contracts, isolated pilot configuration and qualification suites follow
-[ADR 0005](apps/web/spec/adr/0005-google-job-qualification.md). A configured test
-account is never a substitute for separately qualifying production mutations.
+Typed job contracts and qualification suites follow
+[ADR 0005](apps/web/spec/adr/0005-google-job-qualification.md).
+[ADR 0006](apps/web/spec/adr/0006-account-authorized-google-pilots.md) records the
+owner-authorized personal-account policy. An enabled pilot is never a substitute
+for separately qualifying production mutations; journaling, exact targets,
+postcondition checks and unknown-outcome stops remain mandatory.

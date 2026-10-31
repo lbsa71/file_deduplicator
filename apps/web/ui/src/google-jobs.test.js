@@ -25,7 +25,7 @@ test("one read suite covers selected targets and never contains writes", () => {
   );
   assert.equal(readSuite({}).length, 6);
 });
-test("pilot is finite and restores trash/favorite/archive state without permanent deletion", () => {
+test("pilot is finite and declares final flag values without permanent deletion", () => {
   const jobs = pilotSuite(target, {}, 123);
   assert.equal(jobs[0].operation, "album-create");
   assert.equal(jobs.at(-2).operation, "trash");

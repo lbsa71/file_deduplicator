@@ -754,7 +754,8 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
         library,
         session,
         lambda owner: role(owner) >= 3,
-        test_account=os.environ.get("PHOTOFLOW_GOOGLE_TEST_ACCOUNT", ""),
+        pilot_account=os.environ.get("PHOTOFLOW_GOOGLE_PILOT_ACCOUNT", os.environ.get("PHOTOFLOW_GOOGLE_TEST_ACCOUNT", "")),
+        target_policy=os.environ.get("PHOTOFLOW_GOOGLE_PILOT_TARGET_POLICY", "fixtures"),
     )
 
     static = Path(static_root) if static_root else Path(__file__).parent / "static"

@@ -1,12 +1,12 @@
 # PhotoFlow implementation plan
 
-## Active service completion audit — 2026-10-31
+## Service completion audit — 2026-10-31
 
-The active target is the web first-release specification (including every
+The audit covers the web first-release specification (including every
 acceptance gate in `apps/web/spec/08-delivery.md`) and the accepted Google Photos
 integration designs. Existing milestones below provide historical evidence;
-completion requires current implementation and verification. Work proceeds one
-feature at a time, continuing with another feature when a gate is externally blocked.
+completion requires current implementation and verification. This is a backlog,
+not a claim that the full service is complete or an active autonomous work goal.
 
 | Area | Current evidence / remaining work |
 | --- | --- |
@@ -27,15 +27,18 @@ operations, durable job control/events, then the remaining user and integration
 workflows. A blocked deployment or cloud qualification gate does not block local
 implementation and synthetic verification of other requirements.
 
-Latest checkpoint: 120 core service tests, 87 web tests and 126 Google package
+Latest checkpoint: 120 core service tests, 109 web tests and 130 Google package
 tests pass on macOS; the synthetic extension E2E completes 30 jobs over 23
 operation types. Live extension reload restored readiness with zero additional
 photo jobs. Live
 authenticated rendering produced 64/256/512/1024/2048 bounds (768/6,850/24,582/
 85,594/225,344 bytes); all were WebP without EXIF/profile payloads, and the
 301,586-byte original retained its SHA-256. These are one-image functional checks,
-not proof of the full format or performance acceptance matrix. The next slice is
-durable operation control, including restart behavior, cancellation/retry and events.
+not proof of the full format or performance acceptance matrix. Account-bound local
+original checks now rehash mapped files, distinguish uncertain results, and rebuild
+their index from portable sidecars. The durable operation store and coordinator
+have tests but remain unwired into the running app; restart behavior,
+cancellation/retry and events remain a future integration slice.
 
 This plan distills the *Fotohantering* conversation. Later decisions supersede
 earlier sketches: one finite batch command, no database, adjacent JSON records,

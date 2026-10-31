@@ -163,3 +163,44 @@ class JobTypesTests(unittest.TestCase):
             self.store.finish(
                 self.worker["id"], job["id"], job["lease"], {**value, "photos": 2}
             )
+
+    def test_personal_account_pilot_requires_explicit_configuration_and_confirmation(
+        self,
+    ):
+        self.pair("personal")
+        selected = WorkerStore(
+            Path(self.tmp.name),
+            now=lambda: self.now,
+            pilot_account="personal",
+            target_policy="selected",
+        )
+        value = {"photoUrl": "https://photos.google.com/photo/a", "value": True}
+        with self.assertRaises(ValueError):
+            selected.enqueue("alice", "favorite-set", value)
+        selected.enqueue("alice", "favorite-set", value, True)
+        claim = selected.claim(self.worker["id"])
+        self.assertEqual(claim["testScope"]["targetPolicy"], "selected")
+        self.assertEqual(claim["testScope"]["account"], "personal")
+        self.assertEqual(selected.status("alice")["pilotTargetPolicy"], "selected")
+
+    def test_policy_change_cannot_silently_broaden_queued_writes(self):
+        self.store.enqueue(
+            "alice",
+            "favorite-set",
+            {"photoUrl": "https://photos.google.com/photo/a", "value": True},
+            True,
+        )
+        changed = WorkerStore(
+            Path(self.tmp.name),
+            now=lambda: self.now,
+            pilot_account="sandbox",
+            target_policy="selected",
+        )
+        self.assertIsNone(changed.claim(self.worker["id"]))
+        self.assertEqual(changed.status("alice")["jobs"][0]["state"], "blocked")
+
+    def test_invalid_policy_and_conflicting_account_configuration_are_rejected(self):
+        with self.assertRaises(ValueError):
+            WorkerStore(Path(self.tmp.name), target_policy="anything")
+        with self.assertRaises(ValueError):
+            WorkerStore(Path(self.tmp.name), pilot_account="one", test_account="other")

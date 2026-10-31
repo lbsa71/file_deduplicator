@@ -274,3 +274,63 @@ test("browser journal survives storage key reordering without losing integrity",
   assert.equal((await h.pilot.execute(job)).verified, true);
   assert.equal(h.calls.length, 1);
 });
+
+test("explicit selected-target policy permits personal images and private albums, default still requires fixtures", async () => {
+  const h = setup();
+  h.photo.filename = "Family holiday.jpg";
+  h.photo.size = 20 * 1024 * 1024;
+  const job = h.job("favorite-set", { photoUrl, value: true });
+  job.testScope.targetPolicy = "selected";
+  assert.equal((await h.pilot.execute(job)).verified, true);
+  assert.equal(h.calls.length, 1);
+  const other = setup();
+  other.photo.filename = "Family holiday.jpg";
+  const denied = other.job("favorite-set", { photoUrl, value: true });
+  await assert.rejects(other.pilot.execute(denied));
+  assert.equal(other.calls.length, 0);
+});
+test("unknown target policies do not send writes", async () => {
+  const h = setup(),
+    job = h.job("favorite-set", { photoUrl, value: true });
+  job.testScope.targetPolicy = "anything";
+  await assert.rejects(h.pilot.execute(job));
+  assert.equal(h.calls.length, 0);
+});
+
+test("selected policy permits a selected private album but rejects shared albums", async () => {
+  for (const shared of [false, true]) {
+    const h = setup();
+    h.photo.filename = "Personal.jpg";
+    h.reader.albums = async () => ({
+      items: [{ albumId: "album-a", title: "Family", shared }],
+      complete: true,
+    });
+    const job = h.job("album-add", { photoUrl, albumId: "album-a" });
+    job.testScope.targetPolicy = "selected";
+    if (shared) {
+      await assert.rejects(h.pilot.execute(job));
+      assert.equal(h.calls.length, 0);
+    } else {
+      assert.equal((await h.pilot.execute(job)).verified, true);
+      assert.equal(h.calls.length, 1);
+    }
+  }
+});
+test("selected policy still binds exact target and expiry, and cannot change an existing intent policy", async () => {
+  for (const change of [{ photoKey: "wrong" }, { expiresAt: 1 }]) {
+    const h = setup(),
+      job = h.job("favorite-set", { photoUrl, value: true });
+    Object.assign(job.testScope, { targetPolicy: "selected" }, change);
+    await assert.rejects(h.pilot.execute(job));
+    assert.equal(h.calls.length, 0);
+  }
+  const h = setup(),
+    job = h.job("favorite-set", { photoUrl, value: true });
+  await h.pilot.execute(job);
+  job.testScope.targetPolicy = "selected";
+  await assert.rejects(
+    h.pilot.execute(job),
+    (e) => e.code === "INTENT_CONFLICT",
+  );
+  assert.equal(h.calls.length, 1);
+});

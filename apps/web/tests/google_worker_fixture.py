@@ -52,7 +52,8 @@ with tempfile.TemporaryDirectory(prefix="photoflow-google-worker-") as temporary
     original = original.getvalue()
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
-        output.writestr("photoflow-test-fixture.jpg", original)
+        name = "Family holiday.jpg" if os.environ.get("PHOTOFLOW_GOOGLE_PILOT_TARGET_POLICY") == "selected" else "photoflow-test-fixture.jpg"
+        output.writestr(name, original)
     archive = archive.getvalue()
     def fetch_original(url):
         if url != "https://photos.google.com/download/fixture":

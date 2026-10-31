@@ -62,7 +62,7 @@ export function pilotRequest(operation, input, photo, member) {
       requireThat(false, "Unsupported pilot operation", "INPUT");
   }
 }
-// Explicitly isolated synthetic-media pilot. This is not a production retention executor.
+// Account-authorized finite pilot. This is not a production retention executor.
 export class ToolkitPilot {
   constructor({
     account,
@@ -74,7 +74,7 @@ export class ToolkitPilot {
   }) {
     Object.assign(this, { account, reader, write, journal, now, phase });
   }
-  async fixture(input, operation) {
+  async fixture(input, operation, targetPolicy = "fixtures") {
     if (operation === "album-create") return null;
     const mediaKey = photoKey(input.photoUrl);
     let photo;
@@ -96,22 +96,25 @@ export class ToolkitPilot {
       photo.namespace === "library-media" &&
         photo.mediaKey === mediaKey &&
         typeof photo.filename === "string" &&
-        photo.filename.startsWith(prefix) &&
+        (targetPolicy === "selected" || photo.filename.startsWith(prefix)) &&
         /\.(jpe?g|png|webp|gif|tiff?|heic|avif)$/i.test(photo.filename) &&
         Number.isSafeInteger(photo.size) &&
         photo.size > 0 &&
-        photo.size <= 10 * 1024 * 1024,
-      "Expected small synthetic test image",
+        (targetPolicy === "selected" || photo.size <= 10 * 1024 * 1024),
+      "Expected image allowed by pilot target policy",
       "PRECONDITION",
     );
     return photo;
   }
-  async members(input, photo) {
+  async members(input, photo, targetPolicy = "fixtures") {
     const albums = await this.reader.albums();
     const album = albums.items.find((a) => a.albumId === input.albumId);
     requireThat(
-      album?.title.startsWith("PhotoFlow test ") && album.shared === false,
-      "Expected private disposable test album",
+      album &&
+        (targetPolicy === "selected" ||
+          album.title.startsWith("PhotoFlow test ")) &&
+        album.shared === false,
+      "Expected private album allowed by pilot target policy",
       "PRECONDITION",
     );
     const members = await this.reader.albumItems(input.albumId);
@@ -123,7 +126,13 @@ export class ToolkitPilot {
     );
     return matches[0] ?? null;
   }
-  async desired(operation, input, photo, createdAlbumId) {
+  async desired(
+    operation,
+    input,
+    photo,
+    createdAlbumId,
+    targetPolicy = "fixtures",
+  ) {
     if (operation === "album-create") {
       requireThat(createdAlbumId, "Creation receipt unavailable", "UNRESOLVED");
       const all = await this.reader.albums();
@@ -141,7 +150,8 @@ export class ToolkitPilot {
     }
     if (operation === "album-add" || operation === "album-remove")
       return (
-        !!(await this.members(input, photo)) === (operation === "album-add")
+        !!(await this.members(input, photo, targetPolicy)) ===
+        (operation === "album-add")
       );
     const current = await this.reader.observation(photo.mediaKey);
     requireThat(
@@ -186,6 +196,7 @@ export class ToolkitPilot {
     const { id, operation, input: rawInput, testScope: rawScope } = job;
     const input = freeze(structuredClone(rawInput));
     const scope = rawScope && freeze(structuredClone(rawScope));
+    const targetPolicy = scope?.targetPolicy ?? "fixtures";
     identifier(id);
     requireThat(
       JOBS[operation]?.effect === "write",
@@ -194,7 +205,8 @@ export class ToolkitPilot {
     );
     JOBS[operation].validateInput(input);
     requireThat(
-      scope?.testOnly === true &&
+      ["fixtures", "selected"].includes(targetPolicy) &&
+        scope?.testOnly === true &&
         scope.account === this.account &&
         scope.jobId === id &&
         scope.operation === operation &&
@@ -203,13 +215,14 @@ export class ToolkitPilot {
         scope.expiresAt <= this.now() + 3600000 &&
         scope.photoKey === (input.photoUrl ? photoKey(input.photoUrl) : null) &&
         scope.albumId === (input.albumId ?? null),
-      "Isolated-account pilot scope required",
+      "Account-bound pilot scope required",
       "UNQUALIFIED",
     );
     const plan = Object.freeze({
       id,
       account: this.account,
       operation,
+      targetPolicy,
       input: structuredClone(input),
     });
     Object.freeze(plan.input);
@@ -220,7 +233,10 @@ export class ToolkitPilot {
       const old = await this.journal.get(id);
       if (old) {
         requireThat(
-          canonicalJSON(old.plan) === canonicalJSON(plan),
+          canonicalJSON({
+            ...old.plan,
+            targetPolicy: old.plan.targetPolicy ?? "fixtures",
+          }) === canonicalJSON(plan),
           "Pilot intent changed",
           "INTENT_CONFLICT",
         );
@@ -233,10 +249,10 @@ export class ToolkitPilot {
         "UNRESOLVED",
       );
       await this.phase("preflight");
-      const photo = await this.fixture(input, operation);
+      const photo = await this.fixture(input, operation, targetPolicy);
       let member = null;
       if (operation === "album-add" || operation === "album-remove")
-        member = await this.members(input, photo);
+        member = await this.members(input, photo, targetPolicy);
       if (operation === "album-create") {
         const all = await this.reader.albums();
         requireThat(
@@ -244,7 +260,9 @@ export class ToolkitPilot {
           "Test album title already exists",
           "PRECONDITION",
         );
-      } else if (await this.desired(operation, input, photo)) {
+      } else if (
+        await this.desired(operation, input, photo, undefined, targetPolicy)
+      ) {
         const result = {
           verified: true,
           outcome: "unchanged",
@@ -285,7 +303,13 @@ export class ToolkitPilot {
       }
       await this.phase("verifying");
       requireThat(
-        await this.desired(operation, input, photo, record.createdAlbumId),
+        await this.desired(
+          operation,
+          input,
+          photo,
+          record.createdAlbumId,
+          targetPolicy,
+        ),
         "Pilot postcondition failed",
       );
       const result = {
@@ -326,6 +350,7 @@ export class ToolkitPilot {
           record.plan.input,
           record.photo,
           record.createdAlbumId,
+          record.plan.targetPolicy ?? "fixtures",
         ),
         "Pilot outcome unresolved",
         "UNRESOLVED",

@@ -326,11 +326,11 @@ merely because its associated image has moved.
 ## Google Photos desktop worker
 
 Administrators now have a Google Photos connection control in the header. Install
-[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.3.0.zip)
+[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.3.1.zip)
 as an unpacked Chrome/Edge extension. Choose the folder containing manifest.json;
 source installation is deliberately disabled. Existing installations must rebuild
-and manually reload their unpacked extension. Version 0.3 uses job protocol 2 and must be loaded alongside the updated server;
-its permissions are unchanged from 0.2.
+and manually reload their unpacked extension. Version 0.3.1 uses job protocol 2 and must be loaded alongside the updated server;
+pairing requests access to the configured HTTPS endpoint when needed.
 
 Open Google Photos, use Check connection, and copy its account value into the
 PhotoFlow connection panel. Create a pairing code there, paste it into the
@@ -353,14 +353,18 @@ review sanitized data before sharing. These diagnostics do not prove remote
 absence or authorize removal. See [ADR 0004](spec/adr/0004-desktop-google-worker.md)
 for the protocol, storage, bounds and procedure for adding job types.
 
-The operation workbench offers a prepared finite read suite, isolated write pilot
-suite, individual typed jobs and private result inspection. Pilot writes are disabled
-unless an operator explicitly configures a separate disposable Google account.
-This is a real Google account with synthetic photos, not an account created by
-PhotoFlow. See [ADR 0005](spec/adr/0005-google-job-qualification.md) for the full
-catalogue, setup, test fixture conventions, suite effects and recovery procedure.
-Production retention mutations, image-upload jobs and media download transfers
-are not enabled by this workbench.
+The operation workbench offers a prepared finite read suite, account-authorized write pilot
+suite, individual typed jobs and private result inspection. Pilot writes require an
+explicitly configured account and confirmation. Fixture policy is the default;
+[ADR 0006](spec/adr/0006-account-authorized-google-pilots.md) documents the owner's
+personal-account authorization and selected-target opt-in. See
+[ADR 0005](spec/adr/0005-google-job-qualification.md) for the full catalogue, fixture
+conventions and recovery procedure. Review the finite suite: it changes selected
+metadata and does not restore every previous value. Optional timestamp and location
+writes require explicit inputs; the default metadata input is empty.
+Production retention mutations and image-upload jobs remain gated. The
+`download-original` read job supports the bounded single-image transfer described
+above.
 
 Developer verification (Node 22, Python web dependencies, OpenSSL and Chromium):
 
@@ -370,7 +374,8 @@ npm run build:capture --prefix packages/google-photos
 PHOTOFLOW_TEST_PYTHON=/path/to/web-venv/bin/python npm run test:worker --prefix packages/google-photos
 ```
 
-The test launches a disposable HTTPS/WSS app on loopback port 8099 and a temporary
-extension profile. It replaces the extension's origin only inside that temporary
-build; the shipped extension remains pinned to photos.lbsa71.net. All Google
-responses are synthetic. It neither opens nor modifies the real library.
+The test launches a disposable HTTPS/WSS app on loopback port 8100 and a temporary
+extension profile, using the configurable localhost endpoint. Set
+`PHOTOFLOW_TEST_PILOT_POLICY=selected` to test the selected-target policy against
+synthetic personal-style fixtures. All Google responses are synthetic. It neither
+opens nor modifies the real library.
