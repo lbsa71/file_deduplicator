@@ -184,6 +184,81 @@ export class CaptureSanitizer {
   }
 }
 
+const READ_RULES = new Map([
+  ["Invalid response size", "RESPONSE_SIZE"],
+  ["Invalid RPC frame length", "RPC_FRAME_LENGTH"],
+  ["Invalid RPC JSON", "RPC_JSON"],
+  ["Invalid RPC envelope", "RPC_ENVELOPE"],
+  ["Invalid RPC record", "RPC_RECORD"],
+  ["Unexpected RPC identity or error", "RPC_IDENTITY"],
+  ["Missing RPC payload", "RPC_PAYLOAD"],
+  ["Invalid RPC payload JSON", "RPC_PAYLOAD_JSON"],
+  ["Missing RPC payload structure", "RPC_PAYLOAD_STRUCTURE"],
+  ["Expected exactly one RPC response", "RPC_RESPONSE_COUNT"],
+  ["Invalid page items", "PAGE_ITEMS"],
+  ["Invalid continuation token", "PAGE_CURSOR"],
+  ["Invalid favorite", "FAVORITE_FLAG"],
+  ["Invalid trash timestamp", "TRASH_TIMESTAMP"],
+  ["Ambiguous media extension fields", "MEDIA_EXTENSIONS"],
+  ["Invalid album fields", "ALBUM_FIELDS"],
+  ["Invalid album count", "ALBUM_COUNT"],
+  ["Invalid shared flag", "ALBUM_SHARED_FLAG"],
+]);
+
+// Evidence from an explicit read's returned value, separate from passive Network
+// events. It can diagnose a rejected response, never prove a complete inventory.
+export function sanitizeReadEvidence(request, response, error) {
+  const evidence = { kind: "google-photos-read-failure", complete: false };
+  const rule = READ_RULES.get(error?.message);
+  if (rule) evidence.rule = rule;
+  const body = response?.body;
+  evidence.response = { bodyOmitted: true };
+  if (Number.isInteger(response?.status))
+    evidence.response.status = response.status;
+  if (
+    typeof body !== "string" ||
+    new TextEncoder().encode(body).length > MAX_BODY
+  )
+    return evidence;
+  const sanitizer = new CaptureSanitizer();
+  evidence.response = sanitizer.response(
+    { status: response.status, mimeType: "application/json" },
+    body,
+  );
+  if (rpcPattern.test(request?.rpc) && Array.isArray(request?.data))
+    evidence.request = {
+      rpc: request.rpc,
+      data: sanitizer.value(request.data),
+    };
+  const lines = body
+    .replace(/^\)\]\}'(?:\r?\n)?/, "")
+    .split(/\r?\n/)
+    .filter((line) => line.trim());
+  evidence.framing = {
+    xssiPrefix: body.startsWith(")]}'"),
+    totalBytes: new TextEncoder().encode(body).length,
+    lines: lines.slice(0, 16).map((line, index) => ({
+      utf8Bytes: new TextEncoder().encode(line).length,
+      utf16Units: line.length,
+      ...(body.startsWith(")]}'") &&
+      /^\d{1,8}$/.test(line.trim()) &&
+      Number(line.trim()) <= MAX_BODY + 1 &&
+      lines[index + 1]?.trim().startsWith("[")
+        ? { declaredLength: Number(line.trim()) }
+        : {}),
+    })),
+    omittedLines: Math.max(0, lines.length - 16),
+  };
+  if (new TextEncoder().encode(JSON.stringify(evidence)).length > MAX_BODY)
+    return {
+      kind: evidence.kind,
+      complete: false,
+      ...(rule ? { rule } : {}),
+      response: { bodyOmitted: true },
+    };
+  return evidence;
+}
+
 // Uses only passive CDP Network notifications and getResponseBody. Never
 // intercepts, modifies, replays, or sends page requests.
 export class PassiveRecorder {

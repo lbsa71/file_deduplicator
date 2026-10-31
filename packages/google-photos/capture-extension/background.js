@@ -1,4 +1,4 @@
-import { PassiveRecorder } from "./lib/capture.js";
+import { PassiveRecorder, sanitizeReadEvidence } from "./lib/capture.js";
 import { GooglePhotosClient } from "./lib/client.js";
 import { pageRequest, createPageTransport } from "./lib/browser.js";
 import { sanitizeReadDiagnostic } from "./diagnostics.js";
@@ -97,19 +97,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         tabId = id;
         report = null;
-        await chrome.storage.session.remove("capture");
+        await chrome.storage.session.remove(["capture", "readInspection"]);
         return { recording: true };
       }
       case "stop":
         await stop();
         return { recording: false };
-      case "export":
+      case "export": {
         if (tabId !== null) throw new Error("Stop capture before exporting");
-        return {
-          capture:
-            recorder?.export() ??
-            (await chrome.storage.session.get("capture")).capture,
+        const stored = await chrome.storage.session.get([
+          "capture",
+          "readInspection",
+        ]);
+        const capture =
+          recorder?.export() ??
+          stored.capture ??
+          (stored.readInspection
+            ? {
+                schemaVersion: 1,
+                kind: "google-photos-sanitized-capture",
+                complete: false,
+                entries: [],
+                pending: 0,
+              }
+            : null);
+        const exported = capture && {
+          ...capture,
+          ...(stored.readInspection
+            ? { readInspection: stored.readInspection }
+            : {}),
         };
+        if (
+          exported &&
+          new TextEncoder().encode(JSON.stringify(exported)).length >
+            8 * 1024 * 1024
+        )
+          throw new Error("Capture export limit exceeded");
+        return { capture: exported };
+      }
       case "identity":
         return await evaluate(message.tabId, pageRequest, {
           operation: "identity",
@@ -118,7 +143,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (busy) throw new Error("Inspection already active");
         busy = true;
         let diagnostic = null;
+        let lastRead = null;
         try {
+          await chrome.storage.session.remove("readInspection");
           const identity = await evaluate(message.tabId, pageRequest, {
             operation: "identity",
           });
@@ -131,6 +158,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             transport: createPageTransport({
               evaluate: async (fn, arg) => {
                 const result = await evaluate(message.tabId, fn, arg);
+                lastRead = { request: arg, response: result };
                 if (result?.error)
                   diagnostic = sanitizeReadDiagnostic({
                     ...result.diagnostic,
@@ -153,6 +181,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           };
           return report;
         } catch (error) {
+          if (lastRead) {
+            let evidence;
+            try {
+              evidence = sanitizeReadEvidence(
+                lastRead.request,
+                lastRead.response,
+                error,
+              );
+            } catch {
+              evidence = {
+                kind: "google-photos-read-failure",
+                complete: false,
+                response: { bodyOmitted: true },
+              };
+            }
+            await chrome.storage.session.set({ readInspection: evidence });
+          }
           const failure = new Error("Read inspection stopped");
           failure.diagnostic =
             diagnostic ?? sanitizeReadDiagnostic({ code: error?.code });

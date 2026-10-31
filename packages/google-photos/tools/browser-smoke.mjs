@@ -80,6 +80,23 @@ try {
         chrome.runtime.sendMessage({ action, tabId }),
       { action, tabId },
     );
+  await worker.evaluate(async () => {
+    await chrome.storage.session.set({
+      capture: {
+        entries: [{ padding: "x".repeat(8 * 1024 * 1024) }],
+        complete: false,
+      },
+      readInspection: { kind: "google-photos-read-failure", complete: false },
+    });
+  });
+  assert.equal(
+    (await command("export")).ok,
+    false,
+    "Combined export must retain the 8 MiB limit",
+  );
+  await worker.evaluate(() =>
+    chrome.storage.session.remove(["capture", "readInspection"]),
+  );
   async function waitForCapture(count) {
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
@@ -184,6 +201,24 @@ try {
   assert.equal(omitted.entries[0].response.bodyOmitted, true);
   assert.equal(typeof omitted.entries[0].response.captureError, "string");
   assert.equal(actualRequests, 6, "An omitted body must not trigger a replay");
+
+  await page.evaluate(
+    (body) => {
+      window.fetch = async () => new Response(body, { status: 200 });
+    },
+    ")]}'\n1\n" +
+      envelope("lcxiM", [[item("PRIVATE_MEDIA")], "PRIVATE_CURSOR"]).split(
+        "\n",
+      )[2],
+  );
+  const protocolFailure = await command("inventory");
+  assert.equal(protocolFailure.ok, false);
+  assert.equal(protocolFailure.diagnostic.code, "PROTOCOL");
+  const evidence = (await command("export")).result.capture.readInspection;
+  assert.equal(evidence.rule, "RPC_FRAME_LENGTH");
+  assert.equal(evidence.response.rpcResponses[0].rpc, "lcxiM");
+  assert.ok(!JSON.stringify(evidence).includes("PRIVATE_"));
+  assert.equal(actualRequests, 6, "Read evidence must not replay a request");
 
   await page.evaluate(() => {
     window.fetch = async () =>

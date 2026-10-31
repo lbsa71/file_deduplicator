@@ -115,6 +115,14 @@ retention-ready inventory because it does not enumerate every album's members.
 Read failures show fixed diagnostic codes and, for transport failures, the fetch,
 response-body or decoding phase with an allowlisted exception type. Arbitrary
 page exception messages, payloads and credentials are not displayed.
+After a failed explicit read, **Download capture** also includes a separate
+`readInspection` record from the last returned read result. It contains a fixed
+parser-rule code where recognized, sanitized protocol structure and frame-length
+metadata, with a 1 MiB limit. It remains `complete: false`, is cleared by the next
+inspection or capture start, and never causes another request. Its aliases are
+independent of the passive entries. Frame lengths describe the original response;
+redacted payloads must not be substituted into those original frames.
+The combined serialized capture and inspection must fit the 8 MiB export limit.
 
 Captures use passive CDP `Network` events and `getResponseBody`. They do not wrap
 page functions, intercept requests, or replay traffic. Strings/opaque IDs are
