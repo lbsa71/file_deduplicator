@@ -31,6 +31,21 @@ const body =
   frame(JSON.stringify([["di", 1]])) +
   frame(JSON.stringify([["af.httprm", 1]]));
 
+test("observed e trailer follows one verified RPC and cannot hide errors or further records", () => {
+  const end = frame(JSON.stringify([["e", 4, null, null, 1000]]));
+  assert.deepEqual(decodeEnvelope(body + end, "lcxiM"), page);
+  for (const bad of [
+    end,
+    end + body,
+    body + end + end,
+    body + end + frame('[["di",1]]'),
+    body + frame('[["e",5,null,null,1000]]'),
+    body + frame('[["e",4,null,null,"bad"]]'),
+    body + frame('[["e",4,null,null]]'),
+  ])
+    assert.throws(() => decodeEnvelope(bad, "lcxiM"));
+});
+
 test("observed UTF-16 frame lengths with two extra units admit Unicode and known trailers", () => {
   assert.notEqual(records.length + 2, Buffer.byteLength(records));
   assert.deepEqual(decodeEnvelope(body, "lcxiM"), page);

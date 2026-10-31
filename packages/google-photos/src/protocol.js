@@ -21,6 +21,7 @@ export function decodeEnvelope(body, expectedRpc) {
     .split(/\r?\n/)
     .filter((s) => s.trim());
   const found = [];
+  let ended = false;
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
     if (/^\d+$/.test(line.trim())) {
@@ -43,6 +44,21 @@ export function decodeEnvelope(body, expectedRpc) {
     }
     for (const record of array(records, "RPC envelope")) {
       array(record, "RPC record");
+      requireThat(!ended, "Unexpected record after RPC trailer");
+      if (record[0] === "e") {
+        requireThat(
+          found.length === 1 &&
+            record.length === 5 &&
+            record[1] === 4 &&
+            record[2] === null &&
+            record[3] === null &&
+            Number.isSafeInteger(record[4]) &&
+            record[4] >= 0,
+          "Invalid RPC trailer",
+        );
+        ended = true;
+        continue;
+      }
       if (record[0] === "di" || record[0] === "af.httprm") continue;
       requireThat(
         record[0] === "wrb.fr" && record[1] === expectedRpc,

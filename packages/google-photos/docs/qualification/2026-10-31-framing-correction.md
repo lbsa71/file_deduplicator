@@ -79,5 +79,22 @@ type has been accepted by the parser.
 Successful pagination, favorites, albums, membership and details remain to be
 qualified. No retention-ready inventory or live mutation qualification is claimed.
 
+After the next diagnostic Reload, one read exported the exact envelope tag
+sequence `wrb.fr`, `di`, `af.httprm`, `e`, with respectively 7, 2, 4 and 5 fields.
+The sanitized trailing record has shape `[aliased-tag,4,null,null,1000]`;
+the fixed tag summary identifies it as `e`. The final number was coarsened by
+sanitization; only its nonnegative integer type is used by the correction.
+The original export remains ignored as `envelope-tags.capture.json`.
+
+A failing behavioral test reproduced rejection of this observed trailer. The
+decoder now accepts exactly five fields, marker 4, two nulls and a nonnegative
+safe integer, only after one verified RPC. Any subsequent record, duplicate
+trailer, different marker, missing field or invalid numeric type rejects. The
+trailer alone cannot establish success. Unknown tags and RPC errors still reject.
+The actual extension test now serves this trailer as well as the observed
+Unicode framing. All 80 Linux tests, the build and the Chromium extension test
+pass. Corrected live pagination is pending manual Reload; no photo changes were
+made and the library inventory remains incomplete.
+
 No personal photos or albums were changed. No disposable remote items were
 created. Mutation testing still requires synthetic media in an isolated library.

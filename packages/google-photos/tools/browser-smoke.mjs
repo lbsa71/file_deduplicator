@@ -55,7 +55,8 @@ try {
             ],
           ]);
           const trailer = JSON.stringify([["di", 1]]);
-          return `)]}'\n\n${line.length + 2}\n${line}\n${trailer.length + 2}\n${trailer}\n`;
+          const end = JSON.stringify([["e", 4, null, null, 1000]]);
+          return `)]}'\n\n${line.length + 2}\n${line}\n${trailer.length + 2}\n${trailer}\n${end.length + 2}\n${end}\n`;
         })(),
       });
     }
