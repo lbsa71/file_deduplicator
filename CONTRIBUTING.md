@@ -111,3 +111,11 @@ Typed job contracts and qualification suites follow
 owner-authorized personal-account policy. An enabled pilot is never a substitute
 for separately qualifying production mutations; journaling, exact targets,
 postcondition checks and unknown-outcome stops remain mandatory.
+
+Production retention sync now follows the owner-approved eventual-consistency
+amendment in [ADR 0009](apps/web/spec/adr/0009-owner-approved-google-retention-sweep.md).
+An interrupted retention pass remains stopped with its unknown audit record.
+A new complete inventory and reviewed plan may reevaluate still-present targets;
+it must not replay the original uncertain intent. Historical retention unknowns
+must not impose an account-wide lock on fresh passes. Other mutation protocols
+retain the stricter reconciliation requirements above.

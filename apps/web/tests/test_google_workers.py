@@ -515,6 +515,7 @@ class TakeoutAuthorityTests(unittest.TestCase):
                 store.diagnostic("alice", job["id"])["job"]["state"], "blocked"
             )
 
+
 class RetentionPreflightRetryTests(unittest.TestCase):
     def test_explicit_preflight_retry_keeps_same_intent_and_archives_failure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -593,4 +594,54 @@ class RetentionPreflightRetryTests(unittest.TestCase):
                     "itemCount": 3,
                     "shared": True,
                 }
+            )
+
+
+class EventualRetentionTests(unittest.TestCase):
+    def test_fresh_scoped_retention_pass_can_dispatch_with_old_unknown_audit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = WorkerStore(
+                directory, pilot_account="a", target_policy="selected", now=lambda: 1000
+            )
+            store.retention_check = lambda *args: True
+            worker = store.pair(store.pairing("alice", "a")["code"], "a")
+            scope = {
+                "purpose": "owner-authorized-takeout-retention",
+                "manifestId": "b" * 32,
+                "manifestSha256": "c" * 64,
+                "localSha256": "d" * 64,
+                "dedupKey": "dedup-a",
+                "photoKey": "media-a",
+            }
+
+            def enqueue(key, evidence):
+                return store.enqueue_once(
+                    "alice",
+                    key,
+                    "trash",
+                    {"photoUrl": "https://photos.google.com/photo/media-a"},
+                    True,
+                    not_after=2000,
+                    retention_scope=evidence,
+                )
+
+            old = enqueue("old-pass", scope)
+            claimed = store.claim(worker["worker_id"])
+            store.finish(
+                worker["worker_id"],
+                old["id"],
+                claimed["lease"],
+                error="UNKNOWN_OUTCOME",
+            )
+            with self.assertRaises(ValueError):
+                store.enqueue(
+                    "alice",
+                    "trash",
+                    {"photoUrl": "https://photos.google.com/photo/media-a"},
+                    True,
+                )
+            fresh = enqueue("fresh-pass", {**scope, "manifestId": "e" * 32})
+            self.assertEqual(store.claim(worker["worker_id"])["id"], fresh["id"])
+            self.assertEqual(
+                store.diagnostic("alice", old["id"])["job"]["state"], "unknown"
             )

@@ -331,27 +331,31 @@ merely because its associated image has moved.
 
 ## Google Photos desktop worker
 
-Administrators now have a Google Photos connection control in the header. Install
-[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.4.0.zip)
-as an unpacked Chrome/Edge extension. Choose the folder containing manifest.json;
-source installation is deliberately disabled. Existing installations must rebuild
-and manually reload their unpacked extension. Version 0.4.0 uses job protocol 2 and must be loaded alongside the updated server;
-pairing requests access to the configured HTTPS endpoint when needed.
+Administrators have a Google Photos connection control in the header. Install
+[the companion ZIP](https://photos.lbsa71.net/tools/google-photos-worker-0.4.1.zip)
+as an unpacked Chrome/Edge extension. Existing installations should rebuild and
+reload the same extension, preserving its pairing and browser journal. Version
+0.4.1 continues to use job protocol 2 and the configurable HTTPS endpoint.
 
-Open Google Photos, use Check connection, and copy its account value into the
-PhotoFlow connection panel. Create a pairing code there, paste it into the
-extension while the Google tab is selected, and click Pair with PhotoFlow. A
-single read-only inventory job is queued automatically. The warning clears after
-successful validated reads. Read inventory counts submits another job; Disconnect
-Google worker revokes the server credential. Forget pairing on this browser clears
-local credentials only; use the PhotoFlow action to revoke server authorization.
+Open a signed-in Google Photos tab in the same Chrome profile. In PhotoFlow's
+Google panel, enter the Google account and choose **Connect Google Photos**.
+Then choose **Prepare sync**, review the keep/Trash counts, and choose **Move …
+photos to Trash**. Inventory and local Takeout proof checks run automatically;
+preparation makes no Google changes. Keep the Mac awake, online and Chrome open.
+**Pause sync** stops subsequent removals; **Prepare fresh pass** builds a current
+review after an interruption. Already trashed photos are excluded, while remaining
+photos are reevaluated. Stars, every album member, and photos without a verified
+local original stay in Google. This workflow does not permanently delete photos.
+
+Manual pairing, raw jobs, diagnostics and step-by-step reconciliation are grouped
+below the divider in **Advanced & troubleshooting**. They are unnecessary for
+routine sync. See the [production runbook](../../packages/google-photos/docs/qualification/production-sweep-resume.md).
 
 The desktop initiates WSS over the existing HTTPS hostname, so it needs no inbound
 network access. Google authentication stays in the desktop profile. Counts and
 job states persist independently of photo scans. A closed browser leaves reads
 queued; expired Google login needs attention in that browser. Pairing credentials
-expire after 14 days. The first release requires a manual copy/paste pairing code;
-connection is not automatically initiated merely by opening Google Photos.
+expire after 14 days. Connecting does not start a removal pass; a current review must be approved.
 
 For troubleshooting, download a job's server diagnostics in PhotoFlow and the
 latest worker diagnostics from the extension. Correlate job ID/attempt/phase;

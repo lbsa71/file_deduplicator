@@ -174,7 +174,9 @@ class WorkerStore:
                 (self.now(), int(ready), ident),
             )
 
-    def _enqueue(self, db, owner, operation, value, confirmed, suite=None):
+    def _enqueue(
+        self, db, owner, operation, value, confirmed, suite=None, retention=False
+    ):
         check(isinstance(operation, str) and operation in JOB_SPECS)
         spec = JOB_SPECS[operation]
         spec["validate_input"](value)
@@ -195,8 +197,8 @@ class WorkerStore:
             )
             check(
                 not db.execute(
-                    "SELECT 1 FROM jobs WHERE account=? AND state='unknown'",
-                    (worker["account"],),
+                    "SELECT 1 FROM jobs WHERE account=? AND state='unknown' AND (?=0 OR retention_scope IS NULL)",
+                    (worker["account"], retention),
                 ).fetchone()
             )
         pending = db.execute(
@@ -377,7 +379,13 @@ class WorkerStore:
                         ).fetchone()
                 return self.public_job(previous)
             result = self._enqueue(
-                db, owner, operation, value, confirmed, suite="manifest:" + request_key
+                db,
+                owner,
+                operation,
+                value,
+                confirmed,
+                suite="manifest:" + request_key,
+                retention=retention_scope is not None,
             )
             check(not_after is None or not_after > self.now())
             db.execute(
@@ -444,8 +452,8 @@ class WorkerStore:
                         ).fetchone()
                     )
                     unresolved = db.execute(
-                        "SELECT 1 FROM jobs WHERE account=? AND state='unknown'",
-                        (row["account"],),
+                        "SELECT 1 FROM jobs WHERE account=? AND state='unknown' AND (?=0 OR retention_scope IS NULL)",
+                        (row["account"], bool(row["retention_scope"])),
                     ).fetchone()
                     if (
                         failed
@@ -741,6 +749,25 @@ class WorkerStore:
             "created": row["created"],
             "result": summary(json.loads(row["result"])) if row["result"] else None,
             "error": row["error"],
+        }
+
+    def sweep_counts(self, owner, ident):
+        check(isinstance(ident, str) and re.fullmatch(r"[a-f0-9]{32}", ident))
+        with self.db() as db:
+            rows = db.execute(
+                "SELECT DISTINCT j.id,j.state,j.result FROM jobs j JOIN job_requests r ON r.job=j.id WHERE r.owner=? AND j.owner=? AND r.request_key LIKE ? AND j.operation='trash' AND j.retention_scope IS NOT NULL",
+                (owner, owner, ident + ":%"),
+            ).fetchall()
+        outcomes = [
+            json.loads(r["result"])["outcome"]
+            for r in rows
+            if r["state"] == "succeeded" and r["result"]
+        ]
+        return {
+            "processed": len(outcomes),
+            "trashed": sum(o in ("verified", "reconciled") for o in outcomes),
+            "kept": outcomes.count("unchanged"),
+            "active": sum(r["state"] in ("queued", "running") for r in rows),
         }
 
     def status(self, owner):

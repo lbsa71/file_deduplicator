@@ -76,3 +76,26 @@ Tests prove that accepting an unverified backup does not waive local-original
 checks, that missing/unknown local evidence cannot authorize removal, and that a
 remote-only item produces no automatic download or Trash operation. Manifest
 policy and decisions are covered by their immutable SHA-256.
+
+## Amendment: eventual consistency and normal-user sync (2026-11-01)
+
+The owner explicitly requested repeatable passes instead of per-write recovery.
+This supersedes the account-wide unknown-retention-write lock and the requirement
+to repair an interrupted retention intent before preparing another production pass.
+The affected pass still stops and retains its unknown receipt; it is not retried.
+A fresh complete inventory and local audit produce a new immutable reviewed plan.
+Already trashed photos are excluded; still-present photos are reevaluated with
+fresh protection and local-copy checks. Trash is the last per-photo effect.
+Historical production unknowns remain audit evidence, not execution dependencies
+of later reviewed passes. Generic pilot mutations keep their original guards.
+
+The normal UI combines inventory and Takeout proof preparation, displays keep and
+Trash totals, and accepts hash-bound approval with one explicit Trash button.
+Pause and fresh-pass actions replace routine job-ID recovery. Manual stages and
+troubleshooting live below a divider in a collapsed Advanced group. Existing
+production coordinators stay paused across deployment; no sweep starts implicitly.
+
+Qualification covers lost acknowledgement after applied Trash (fresh pass excludes
+it), a still-present item (fresh pass evaluates it), newly protected items, local
+corruption, preserved audit history, and abandoned retention-lock recovery while
+retaining the live single-writer lock.

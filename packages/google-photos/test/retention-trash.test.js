@@ -165,3 +165,56 @@ test("production unknown write reconciles through exact positive Trash proof wit
   assert.equal(x.calls.length, 1);
   assert.equal((await x.journal.get(x.job.id)).state, "verified");
 });
+
+test("a fresh reviewed pass reevaluates a present photo after lost acknowledgement", async () => {
+  const x = setup();
+  x.reader.page = async () => ({ items: [], next: null, complete: true });
+  await assert.rejects(x.executor.execute(x.job));
+  const next = structuredClone(x.job);
+  next.id = next.retentionScope.jobId = "next-pass";
+  next.retentionScope.manifestId = "d".repeat(32);
+  x.reader.page = async () => ({
+    items: [x.photo],
+    next: null,
+    complete: true,
+  });
+  x.photo.favorite = true;
+  assert.equal((await x.executor.execute(next)).outcome, "unchanged");
+  assert.equal(x.calls.length, 1);
+  assert.equal((await x.journal.get(x.job.id)).state, "unknown");
+});
+
+test("a restarted retention writer tolerates its abandoned lock but preserves audit history", async () => {
+  const x = setup();
+  await x.executor.execute(x.job);
+  const old = await x.journal.get(x.job.id);
+  await x.journal.put({ ...old, state: "unknown" });
+  await x.journal.storage.set({
+    ["pilot-lock:" + ACCOUNT]: { account: ACCOUNT },
+  });
+  const next = structuredClone(x.job);
+  next.id = next.retentionScope.jobId = "fresh-pass";
+  next.retentionScope.manifestId = "e".repeat(32);
+  assert.equal((await x.executor.execute(next)).outcome, "verified");
+  assert.equal((await x.journal.get(old.plan.id)).state, "unknown");
+});
+
+test("fresh passes cannot bypass a live writer or an unresolved pilot", async () => {
+  const x = setup();
+  const release = await x.journal.lock(ACCOUNT, { retention: true });
+  await assert.rejects(x.executor.execute(x.job), (e) => e.code === "BUSY");
+  await release();
+  await x.executor.execute(x.job);
+  const record = await x.journal.get(x.job.id);
+  record.plan.targetPolicy = "selected";
+  record.state = "unknown";
+  await x.journal.put(record);
+  const next = structuredClone(x.job);
+  next.id = next.retentionScope.jobId = "next-retention-pass";
+  next.retentionScope.manifestId = "e".repeat(32);
+  await assert.rejects(
+    x.executor.execute(next),
+    (e) => e.code === "UNRESOLVED",
+  );
+  assert.equal(x.calls.length, 1);
+});

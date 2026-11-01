@@ -77,6 +77,10 @@ class Reconciliation:
             library.available,
         )
 
+        from .google_sync import GoogleSync
+
+        self.sync = GoogleSync(self)
+
     def close(self):
         self.runner.close()
 
@@ -123,6 +127,23 @@ class Reconciliation:
             private=True,
         )
 
+    @staticmethod
+    def execution_paused(job):
+        # Existing plans migrate to paused until their owner explicitly continues.
+        return job.get("sync_paused", job["params"].get("passVersion") != 1)
+
+    def pause(self, owner, ident):
+        require(self.authorize(owner), "Administrator authority required")
+        job = self.jobs.get(ident)
+        require(
+            job["owner"] == owner and job["action"] == "google.commit",
+            "No owned sync to pause",
+        )
+        self.jobs.update(ident, sync_paused=True)
+        if self.runner.started:
+            self.runner.wake()
+        return self.jobs.get(ident)
+
     def retention_check(self, owner, account, scope):
         from .google_takeout import PURPOSE, verify_copy
 
@@ -154,6 +175,15 @@ class Reconciliation:
             and op["localEvidence"]["sha256"] == scope["localSha256"],
             "Retention evidence changed",
         )
+        # Read only the pause fields, not the potentially large completed journal.
+        key = "commit:" + value["id"] + ":" + value["sha256"][:32]
+        with self.jobs.db() as db:
+            run = db.execute(
+                "SELECT json_extract(data,'$.sync_paused'), json_extract(data,'$.params.passVersion') FROM commands WHERE owner=? AND request_key=?",
+                (owner, key),
+            ).fetchone()
+        if run and (bool(run[0]) if run[0] is not None else run[1] != 1):
+            return False
         verify_copy(self.library, op["localEvidence"], scope["photoKey"])
         return True
 
@@ -203,7 +233,7 @@ class Reconciliation:
             raise Conflict("Manifest changed or is corrupt; prepare again")
         return value
 
-    def validate(self, owner, value, expiration=True):
+    def validate_context(self, owner, value, expiration=True):
         if value["libraryId"] != self.library.id or value["account"] != self.account(
             owner
         ):
@@ -211,11 +241,14 @@ class Reconciliation:
         if expiration and self.now() > value["expiresAt"]:
             if value.get("capabilities", {}).get("productionRetention"):
                 raise Conflict(
-                    "Manifest expired; reconcile any unknown write, then prepare a fresh full inventory and Takeout Trash sweep. Completed Trash items are excluded from the library inventory."
+                    "Manifest expired; prepare a fresh full inventory and Takeout Trash sweep. Completed Trash items are excluded from the library inventory."
                 )
             raise Conflict("Manifest expired; prepare again")
         if not self.library.available():
             raise OSError("Library storage is unavailable")
+
+    def validate(self, owner, value, expiration=True):
+        self.validate_context(owner, value, expiration)
         for item in value["local"]:
             try:
                 record, _ = self.library.checked(item["recordId"], item["revision"])
@@ -228,6 +261,10 @@ class Reconciliation:
                 raise Conflict("Local record is unavailable; prepare again") from None
 
     def commit(self, owner, ident, expected_hash):
+        with self.sync.lock:
+            return self._approve(owner, ident, expected_hash)
+
+    def _approve(self, owner, ident, expected_hash):
         require(self.authorize(owner), "Administrator authority required")
         value = self.manifest(owner, ident)
         if value["sha256"] != expected_hash:
@@ -242,6 +279,10 @@ class Reconciliation:
             # Repeated approval returns the original execution receipt. Local
             # ingestion may legitimately have enriched sidecars during that run.
             return json.loads(previous[0])
+        if value["capabilities"].get("productionRetention") and self.sync.active_pass(
+            owner, value["account"]
+        ):
+            raise Conflict("A sync is already running")
         self.validate(owner, value)
         if value["options"]["nonVital"]:
             require(
@@ -256,6 +297,7 @@ class Reconciliation:
                 "manifestId": ident,
                 "sha256": expected_hash,
                 "expiresAt": value["expiresAt"],
+                "passVersion": 1,
             },
             key=key,
             private=True,
@@ -266,6 +308,8 @@ class Reconciliation:
         job = self.jobs.get(ident)
         if job["owner"] != owner:
             raise KeyError(ident)
+        if job["action"] == "google.sync-prepare":
+            raise Conflict("Prepare a fresh sync pass")
         if job["action"] in ("google.prepare", "google.prepare-takeout"):
             if self.account(owner) != job["params"]["account"]:
                 raise Conflict("Google account changed; prepare again")
@@ -281,6 +325,8 @@ class Reconciliation:
                 raise Conflict("Deferred uploads belong to a new preparation run")
             manifest = self.manifest(owner, job["params"]["manifestId"])
             self.validate(owner, manifest)
+        if job["action"] == "google.commit":
+            self.jobs.update(ident, sync_paused=False)
         value = self.jobs.retry(ident)
         if self.runner.started:
             self.runner.wake()
@@ -332,7 +378,9 @@ class Reconciliation:
                 )
             if state["state"] == "unknown":
                 raise ReconciliationRequired(
-                    "Google outcome is unknown; reconcile the original job before proceeding"
+                    "Pass interrupted; prepare a fresh inventory to pick up remaining photos"
+                    if retention_scope
+                    else "Google outcome is unknown; reconcile the original job before proceeding"
                 )
             if state["state"] != "succeeded":
                 raise ValueError(
@@ -433,6 +481,8 @@ class Reconciliation:
         return result
 
     def execute(self, job, context):
+        if job["action"] == "google.sync-prepare":
+            return self.sync.execute_preparation(job, context)
         if job["action"] == "google.prepare-takeout":
             from .google_takeout import prepare_sweep
 
@@ -733,7 +783,9 @@ class Reconciliation:
             ],
         }
         manifest["sha256"] = manifest_hash(manifest)
-        self.validate(job["owner"], manifest)
+        # Read-only inventories retain unavailable local candidates. The executable
+        # Takeout plan includes only copies that pass current byte/provenance checks.
+        self.validate_context(job["owner"], manifest)
         existing = load(self.path(ident))
         if existing:
             # Recovery after publishing the immutable manifest keeps its original
@@ -752,6 +804,10 @@ class Reconciliation:
 
     def _commit(self, job, context):
         manifest = self.manifest(job["owner"], job["params"]["manifestId"])
+        if manifest["capabilities"].get(
+            "productionRetention"
+        ) and self.execution_paused(self.jobs.get(job["id"])):
+            raise PartialResult({"manifestId": manifest["id"], "paused": True})
         if manifest["sha256"] != job["params"]["sha256"]:
             raise Conflict("Manifest changed")
         # Completed steps may legitimately change local associations. Validate the
@@ -777,6 +833,17 @@ class Reconciliation:
                 )
             }
         for operation in manifest["operations"]:
+            if manifest["capabilities"].get(
+                "productionRetention"
+            ) and self.execution_paused(self.jobs.get(job["id"])):
+                raise PartialResult(
+                    {
+                        "manifestId": manifest["id"],
+                        "paused": True,
+                        "completed": completed,
+                        "deferred": [],
+                    }
+                )
             name = "commit:" + str(operation["seq"]) + ":" + operation["operation"]
             if (
                 name in done
@@ -918,6 +985,32 @@ def install_reconciliation_routes(app, library, remote, session, authorize, wake
         if job["owner"] != owner:
             raise KeyError(ident)
         return job
+
+    @app.post("/api/v1/google/sync/pause")
+    def sync_pause(req: Request):
+        owner = session(req, 3, True)["username"]
+        job, _ = service.sync.root(owner, service.account(owner))
+        require(job is not None, "There is no sync to pause")
+        return JSONResponse(
+            service.pause(owner, job["id"]),
+            status_code=202,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/v1/google/sync")
+    def sync_status(req: Request):
+        return JSONResponse(
+            service.sync.status(session(req, 3)["username"]),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/v1/google/sync/prepare")
+    def sync_prepare(req: Request):
+        return JSONResponse(
+            service.sync.prepare(session(req, 3, True)["username"]),
+            status_code=202,
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get(base)
     def listing(req: Request):

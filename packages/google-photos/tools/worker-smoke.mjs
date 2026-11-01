@@ -109,13 +109,16 @@ try {
   // Normal app UI now performs pairing without opening the extension popup.
   await ui
     .getByRole("button", {
-      name: "Connect through installed extension",
+      name: "Connect Google Photos",
       exact: true,
     })
     .click();
   await ui
     .getByRole("button", { name: "✓ Google connected", exact: true })
     .waitFor({ timeout: 30000 });
+  await ui.getByText("Advanced & troubleshooting", { exact: true }).click();
+  await ui.getByText("Connection settings", { exact: true }).click();
+  await ui.getByText("Worker job history", { exact: true }).click();
   await ui.getByText(/2 items, 1 favorites, 1 albums/).waitFor();
   assert.ok(await ui.getByText(/2 items, 1 favorites, 1 albums/).count());
   assert.equal(fixture.calls, 4);
@@ -147,349 +150,271 @@ try {
   assert.ok(downloaded.events.some((e) => e.phase === "complete"));
   assert.ok(downloaded.entries.length > 0);
   assert.ok(!JSON.stringify(downloaded).includes("PRIVATE_"));
-  await ui
-    .getByRole("button", { name: "Read inventory counts", exact: true })
-    .click();
-  await ui.waitForFunction(
-    () =>
-      document.querySelectorAll(".google-panel li").length === 2 &&
-      [...document.querySelectorAll(".google-panel li")].every((e) =>
-        e.textContent.includes("succeeded"),
-      ),
-  );
-  assert.equal(fixture.calls, 8);
-  await ui
-    .getByText("Operation workbench and qualification suite", { exact: true })
-    .click();
-  await ui
-    .getByLabel("Selected library photo URL", { exact: true })
-    .fill("https://photos.google.com/photo/media-a");
-  await ui.getByLabel("Selected album ID", { exact: true }).fill("album-a");
-  await ui
-    .getByLabel("Optional opaque Google hashes", { exact: true })
-    .fill("opaque");
-  await ui
-    .getByText(
-      "I authorize this finite pilot on the selected photos in the configured account.",
-      { exact: true },
-    )
-    .click();
-  await ui.getByLabel(/Pilot metadata/).fill(
-    JSON.stringify({
-      timestampSec: 1700001000,
-      timezoneSec: 3600,
-      location: {
-        centerE7: [10000000, 20000000],
-        visible1E7: [9000000, 19000000],
-        visible2E7: [11000000, 21000000],
-        scale: 14,
-        placeId: "fixture-place",
-      },
-    }),
-  );
-  await ui
-    .getByRole("button", {
-      name: "Prepare read and write pilot suite",
-      exact: true,
-    })
-    .click();
-  await ui
-    .getByRole("button", { name: "Queue prepared suite", exact: true })
-    .click();
-  await ui.waitForFunction(
-    () =>
-      document.querySelectorAll(".google-panel ol>li").length === 26 &&
-      [...document.querySelectorAll(".google-panel ol>li")].every((e) =>
-        /: (succeeded|failed|unknown|blocked)/.test(e.textContent),
-      ),
-    {},
-    { timeout: 60000 },
-  );
-  assert.equal(
+  if (!process.env.PHOTOFLOW_TEST_SYNC_ONLY) {
     await ui
-      .locator(".google-panel ol>li")
-      .filter({ hasText: /: (failed|unknown|blocked)/ })
-      .count(),
-    0,
-  );
-  assert.equal(fixture.state.trashed, false);
-  assert.equal(fixture.state.favorite, false);
-  assert.equal(fixture.state.archived, false);
-  assert.equal(fixture.state.member, false);
-  assert.equal(fixture.state.location, null);
-  assert.ok(fixture.state.writes.includes("ycV3Nd"));
-  assert.ok(fixture.state.writes.includes("EtUHOe"));
-  fixture.state.failNextWrite = true;
-  await ui
-    .getByLabel("Individual operation", { exact: true })
-    .selectOption("favorite-set");
-  await ui
-    .getByRole("button", { name: "Queue selected operation", exact: true })
-    .click();
-  await ui.waitForFunction(() =>
-    [...document.querySelectorAll(".google-panel ol>li")].some((e) =>
-      e.textContent.includes("unknown"),
-    ),
-  );
-  const row = await ui
-    .locator(".google-panel ol>li")
-    .filter({ hasText: "unknown" })
-    .first()
-    .getByRole("button", { name: "Download job diagnostics" });
-  const [failedDownload] = await Promise.all([
-    ui.waitForEvent("download"),
-    row.click(),
-  ]);
-  const failed = JSON.parse(
-    await readFile(await failedDownload.path(), "utf8"),
-  );
-  const writesBefore = fixture.state.writes.length;
-  await ui
-    .getByLabel("Individual operation", { exact: true })
-    .selectOption("reconcile-write");
-  await ui
-    .getByLabel("Job input JSON", { exact: true })
-    .fill(JSON.stringify({ originalJobId: failed.job.id }));
-  await ui
-    .getByRole("button", { name: "Queue selected operation", exact: true })
-    .click();
-  await ui.waitForFunction(
-    () =>
-      document.querySelectorAll(".google-panel ol>li").length === 28 &&
-      [...document.querySelectorAll(".google-panel ol>li")].every((e) =>
-        e.textContent.includes("succeeded"),
-      ),
-    {},
-    { timeout: 30000 },
-  );
-  assert.equal(fixture.state.writes.length, writesBefore);
-  await ui
-    .getByLabel("Individual operation", { exact: true })
-    .selectOption("download-original");
-  await ui
-    .getByLabel("Job input JSON", { exact: true })
-    .fill(
-      JSON.stringify({ photoUrl: "https://photos.google.com/photo/media-a" }),
+      .getByRole("button", { name: "Read inventory counts", exact: true })
+      .click();
+    await ui.waitForFunction(
+      () =>
+        document.querySelectorAll(".google-panel ol>li").length === 2 &&
+        [...document.querySelectorAll(".google-panel ol>li")].every((e) =>
+          e.textContent.includes("succeeded"),
+        ),
     );
-  for (const count of [29, 30]) {
+    assert.equal(fixture.calls, 8);
+    await ui
+      .getByText("Operation workbench and qualification suite", { exact: true })
+      .click();
+    await ui
+      .getByLabel("Selected library photo URL", { exact: true })
+      .fill("https://photos.google.com/photo/media-a");
+    await ui.getByLabel("Selected album ID", { exact: true }).fill("album-a");
+    await ui
+      .getByLabel("Optional opaque Google hashes", { exact: true })
+      .fill("opaque");
+    await ui
+      .getByText(
+        "I authorize this finite pilot on the selected photos in the configured account.",
+        { exact: true },
+      )
+      .click();
+    await ui.getByLabel(/Pilot metadata/).fill(
+      JSON.stringify({
+        timestampSec: 1700001000,
+        timezoneSec: 3600,
+        location: {
+          centerE7: [10000000, 20000000],
+          visible1E7: [9000000, 19000000],
+          visible2E7: [11000000, 21000000],
+          scale: 14,
+          placeId: "fixture-place",
+        },
+      }),
+    );
+    await ui
+      .getByRole("button", {
+        name: "Prepare read and write pilot suite",
+        exact: true,
+      })
+      .click();
+    await ui
+      .getByRole("button", { name: "Queue prepared suite", exact: true })
+      .click();
+    await ui.waitForFunction(
+      () =>
+        document.querySelectorAll(".google-panel ol>li").length === 26 &&
+        [...document.querySelectorAll(".google-panel ol>li")].every((e) =>
+          /: (succeeded|failed|unknown|blocked)/.test(e.textContent),
+        ),
+      {},
+      { timeout: 60000 },
+    );
+    assert.equal(
+      await ui
+        .locator(".google-panel ol>li")
+        .filter({ hasText: /: (failed|unknown|blocked)/ })
+        .count(),
+      0,
+    );
+    assert.equal(fixture.state.trashed, false);
+    assert.equal(fixture.state.favorite, false);
+    assert.equal(fixture.state.archived, false);
+    assert.equal(fixture.state.member, false);
+    assert.equal(fixture.state.location, null);
+    assert.ok(fixture.state.writes.includes("ycV3Nd"));
+    assert.ok(fixture.state.writes.includes("EtUHOe"));
+    fixture.state.failNextWrite = true;
+    await ui
+      .getByLabel("Individual operation", { exact: true })
+      .selectOption("favorite-set");
+    await ui
+      .getByRole("button", { name: "Queue selected operation", exact: true })
+      .click();
+    await ui.waitForFunction(() =>
+      [...document.querySelectorAll(".google-panel ol>li")].some((e) =>
+        e.textContent.includes("unknown"),
+      ),
+    );
+    const row = await ui
+      .locator(".google-panel ol>li")
+      .filter({ hasText: "unknown" })
+      .first()
+      .getByRole("button", { name: "Download job diagnostics" });
+    const [failedDownload] = await Promise.all([
+      ui.waitForEvent("download"),
+      row.click(),
+    ]);
+    const failed = JSON.parse(
+      await readFile(await failedDownload.path(), "utf8"),
+    );
+    const writesBefore = fixture.state.writes.length;
+    await ui
+      .getByLabel("Individual operation", { exact: true })
+      .selectOption("reconcile-write");
+    await ui
+      .getByLabel("Job input JSON", { exact: true })
+      .fill(JSON.stringify({ originalJobId: failed.job.id }));
     await ui
       .getByRole("button", { name: "Queue selected operation", exact: true })
       .click();
     await ui.waitForFunction(
-      (count) => {
-        const jobs = [...document.querySelectorAll(".google-panel ol>li")];
-        return (
-          jobs.length === count &&
-          jobs.every((e) => e.textContent.includes("succeeded"))
-        );
-      },
-      count,
+      () =>
+        document.querySelectorAll(".google-panel ol>li").length === 28 &&
+        [...document.querySelectorAll(".google-panel ol>li")].every((e) =>
+          e.textContent.includes("succeeded"),
+        ),
+      {},
       { timeout: 30000 },
     );
-  }
-  const imported = await ui.evaluate(async () => {
-    const status = await (await fetch("/api/v1/google/status")).json();
-    return Promise.all(
-      status.jobs
-        .slice(0, 2)
-        .map(
-          async (job) =>
-            (await (await fetch(`/api/v1/google/jobs/${job.id}/result`)).json())
-              .result,
-        ),
+    assert.equal(fixture.state.writes.length, writesBefore);
+    await ui
+      .getByLabel("Individual operation", { exact: true })
+      .selectOption("download-original");
+    await ui
+      .getByLabel("Job input JSON", { exact: true })
+      .fill(
+        JSON.stringify({ photoUrl: "https://photos.google.com/photo/media-a" }),
+      );
+    for (const count of [29, 30]) {
+      await ui
+        .getByRole("button", { name: "Queue selected operation", exact: true })
+        .click();
+      await ui.waitForFunction(
+        (count) => {
+          const jobs = [...document.querySelectorAll(".google-panel ol>li")];
+          return (
+            jobs.length === count &&
+            jobs.every((e) => e.textContent.includes("succeeded"))
+          );
+        },
+        count,
+        { timeout: 30000 },
+      );
+    }
+    const imported = await ui.evaluate(async () => {
+      const status = await (await fetch("/api/v1/google/status")).json();
+      return Promise.all(
+        status.jobs
+          .slice(0, 2)
+          .map(
+            async (job) =>
+              (
+                await (
+                  await fetch(`/api/v1/google/jobs/${job.id}/result`)
+                ).json()
+              ).result,
+          ),
+      );
+    });
+    assert.deepEqual(
+      imported.map((r) => r.outcome),
+      ["already-present", "imported"],
     );
-  });
-  assert.deepEqual(
-    imported.map((r) => r.outcome),
-    ["already-present", "imported"],
-  );
-  assert.equal(imported[0].recordId, imported[1].recordId);
-  await ui
-    .getByRole("button", { name: "Check local original", exact: true })
-    .click();
-  const localMatch = ui.getByRole("region", {
-    name: "Local original verification",
-  });
-  await localMatch
-    .getByText("Local original verified", { exact: true })
-    .waitFor();
-  assert.equal(
+    assert.equal(imported[0].recordId, imported[1].recordId);
+    await ui
+      .getByRole("button", { name: "Check local original", exact: true })
+      .click();
+    const localMatch = ui.getByRole("region", {
+      name: "Local original verification",
+    });
     await localMatch
-      .getByRole("link", { name: "Open local original" })
-      .getAttribute("href"),
-    `/photos/${imported[0].recordId}`,
-  );
-  await ui
-    .getByLabel("Selected library photo URL", { exact: true })
-    .fill("https://photos.google.com/photo/not-mapped");
-  assert.equal(
-    await localMatch.count(),
-    0,
-    "old verification must disappear when target changes",
-  );
-  await ui
-    .getByRole("button", { name: "Check local original", exact: true })
-    .click();
-  await localMatch
-    .getByText(
-      "No account-bound local mapping. A local copy may still exist.",
-      { exact: true },
-    )
-    .waitFor();
-  assert.equal(await localMatch.getByRole("link").count(), 0);
-  assert.equal(
-    await ui.locator(".google-panel ol>li").count(),
-    30,
-    "local checks must not queue Google jobs",
-  );
-  // Exercise preparation/inspection/hash-bound commit through the actual UI.
-  // The fixture asset is explicitly expendable; no real Google traffic is sent.
-  fixture.state.favorite = false;
-  await ui
-    .getByText("Prepare and commit reconciliation", { exact: true })
-    .click();
-  await ui
-    .getByLabel("Reconciliation photo URLs", { exact: true })
-    .fill("https://photos.google.com/photo/media-a");
-  if (targetPolicy === "selected")
+      .getByText("Local original verified", { exact: true })
+      .waitFor();
+    assert.equal(
+      await localMatch
+        .getByRole("link", { name: "Open local original" })
+        .getAttribute("href"),
+      `/photos/${imported[0].recordId}`,
+    );
     await ui
+      .getByLabel("Selected library photo URL", { exact: true })
+      .fill("https://photos.google.com/photo/not-mapped");
+    assert.equal(
+      await localMatch.count(),
+      0,
+      "old verification must disappear when target changes",
+    );
+    await ui
+      .getByRole("button", { name: "Check local original", exact: true })
+      .click();
+    await localMatch
       .getByText(
-        "I confirm the selected photos are non-vital and authorize a Trash pilot.",
+        "No account-bound local mapping. A local copy may still exist.",
         { exact: true },
       )
+      .waitFor();
+    assert.equal(await localMatch.getByRole("link").count(), 0);
+    assert.equal(
+      await ui.locator(".google-panel ol>li").count(),
+      30,
+      "local checks must not queue Google jobs",
+    );
+    // Exercise preparation/inspection/hash-bound commit through the actual UI.
+    // The fixture asset is explicitly expendable; no real Google traffic is sent.
+    fixture.state.favorite = false;
+    await ui
+      .getByText("Prepare and commit reconciliation", { exact: true })
       .click();
-  const beforePrepare = fixture.state.writes.length;
-  await ui
-    .getByRole("button", { name: "Prepare dry-run manifest", exact: true })
-    .click();
-  await ui
-    .getByRole("button", { name: "Inspect prepared manifest", exact: true })
-    .first()
-    .waitFor({ timeout: 90000 });
-  assert.equal(
-    fixture.state.writes.length,
-    beforePrepare,
-    "Preparation must not mutate Google",
-  );
-  await ui
-    .getByRole("button", { name: "Inspect prepared manifest", exact: true })
-    .first()
-    .click();
-  const preview = ui.getByRole("region", {
-    name: "Prepared reconciliation manifest",
-  });
-  const manifestText = await preview.locator("p").first().textContent();
-  const manifestId = manifestText.match(/Manifest ([a-f0-9]{32})/)[1];
-  const [manifestDownload] = await Promise.all([
-    ui.waitForEvent("download"),
-    preview
-      .getByRole("button", {
-        name: "Download full private manifest",
-        exact: true,
-      })
-      .click(),
-  ]);
-  const downloadedManifest = await readFile(
-    await manifestDownload.path(),
-    "utf8",
-  );
-  const authoritativeManifest = await ui.evaluate(
-    async (id) =>
-      (
-        await fetch(
-          "/api/v1/google/reconciliation/manifests/" + id + "/download",
+    await ui
+      .getByLabel("Reconciliation photo URLs", { exact: true })
+      .fill("https://photos.google.com/photo/media-a");
+    if (targetPolicy === "selected")
+      await ui
+        .getByText(
+          "I confirm the selected photos are non-vital and authorize a Trash pilot.",
+          { exact: true },
         )
-      ).text(),
-    manifestId,
-  );
-  assert.equal(
-    downloadedManifest,
-    authoritativeManifest,
-    "Manifest download must preserve original bytes and large timestamps",
-  );
-
-  await preview
-    .getByText(
-      "I reviewed this manifest and authorize its listed executable operations.",
-      { exact: true },
-    )
-    .click();
-  await preview
-    .getByRole("button", { name: "Commit reviewed manifest", exact: true })
-    .click();
-  await ui
-    .locator(".google-reconciliation li")
-    .filter({ hasText: "google.commit: succeeded" })
-    .waitFor({ timeout: 60000 });
-  assert.equal(fixture.state.trashed, targetPolicy === "selected");
-  assert.equal(
-    fixture.state.writes.length,
-    beforePrepare + (targetPolicy === "selected" ? 1 : 0),
-  );
-  if (targetPolicy === "selected") {
-    fixture.state.trashed = false;
-    assert.ok((await context.request.post(endpoint + "/fixture-takeout")).ok());
-    await ui
-      .getByText(
-        "I confirm the selected photos are non-vital and authorize a Trash pilot.",
-        { exact: true },
-      )
-      .click();
-    await ui.getByLabel("Reconciliation photo URLs", { exact: true }).fill("");
+        .click();
+    const beforePrepare = fixture.state.writes.length;
     await ui
       .getByRole("button", { name: "Prepare dry-run manifest", exact: true })
       .click();
     await ui
-      .locator(".google-reconciliation li")
-      .filter({ hasText: "google.prepare: succeeded" })
-      .nth(1)
+      .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+      .first()
       .waitFor({ timeout: 90000 });
-    // Read the synthetic server state to distinguish the new completed command.
-    await ui.waitForFunction(
-      async () => {
-        const j = await (await fetch("/api/v1/google/reconciliation")).json();
-        return (
-          j.items[0]?.action === "google.prepare" &&
-          j.items[0]?.state === "succeeded"
-        );
-      },
-      null,
-      { timeout: 90000 },
+    assert.equal(
+      fixture.state.writes.length,
+      beforePrepare,
+      "Preparation must not mutate Google",
     );
     await ui
       .getByRole("button", { name: "Inspect prepared manifest", exact: true })
       .first()
       .click();
-    await preview
-      .getByRole("button", { name: "Prepare Takeout Trash sweep", exact: true })
-      .click();
-    await ui.waitForFunction(
-      async () => {
-        const j = await (await fetch("/api/v1/google/reconciliation")).json();
-        return (
-          j.items[0]?.action === "google.prepare-takeout" &&
-          j.items[0]?.state === "succeeded"
-        );
-      },
-      null,
-      { timeout: 90000 },
+    const preview = ui.getByRole("region", {
+      name: "Prepared reconciliation manifest",
+    });
+    const manifestText = await preview.locator("p").first().textContent();
+    const manifestId = manifestText.match(/Manifest ([a-f0-9]{32})/)[1];
+    const [manifestDownload] = await Promise.all([
+      ui.waitForEvent("download"),
+      preview
+        .getByRole("button", {
+          name: "Download full private manifest",
+          exact: true,
+        })
+        .click(),
+    ]);
+    const downloadedManifest = await readFile(
+      await manifestDownload.path(),
+      "utf8",
     );
-    await ui
-      .locator(".google-reconciliation li")
-      .filter({ hasText: "google.prepare-takeout: succeeded" })
-      .waitFor({ timeout: 90000 });
-    await ui
-      .getByRole("button", { name: "Inspect prepared manifest", exact: true })
-      .first()
-      .click();
-    await preview
-      .locator("pre")
-      .filter({ hasText: '"takeout-trash"' })
-      .waitFor({ timeout: 30000 });
-    assert.match(await preview.textContent(), /takeout-trash/);
-    const sweepId = (await preview.locator("p").first().textContent()).match(
-      /Manifest ([a-f0-9]{32})/,
-    )[1];
+    const authoritativeManifest = await ui.evaluate(
+      async (id) =>
+        (
+          await fetch(
+            "/api/v1/google/reconciliation/manifests/" + id + "/download",
+          )
+        ).text(),
+      manifestId,
+    );
+    assert.equal(
+      downloadedManifest,
+      authoritativeManifest,
+      "Manifest download must preserve original bytes and large timestamps",
+    );
+
     await preview
       .getByText(
         "I reviewed this manifest and authorize its listed executable operations.",
@@ -499,116 +424,285 @@ try {
     await preview
       .getByRole("button", { name: "Commit reviewed manifest", exact: true })
       .click();
-    let sweepCommit;
-    for (let n = 0; n < 300; n++) {
-      const response = await context.request.get(
-        endpoint + "/api/v1/google/reconciliation",
+    await ui
+      .locator(".google-reconciliation li")
+      .filter({ hasText: "google.commit: succeeded" })
+      .waitFor({ timeout: 60000 });
+    assert.equal(fixture.state.trashed, targetPolicy === "selected");
+    assert.equal(
+      fixture.state.writes.length,
+      beforePrepare + (targetPolicy === "selected" ? 1 : 0),
+    );
+    if (targetPolicy === "selected") {
+      fixture.state.trashed = false;
+      assert.ok(
+        (await context.request.post(endpoint + "/fixture-takeout")).ok(),
       );
-      sweepCommit = (await response.json()).items.find(
-        (x) => x.action === "google.commit" && x.params.manifestId === sweepId,
+      await ui
+        .getByText(
+          "I confirm the selected photos are non-vital and authorize a Trash pilot.",
+          { exact: true },
+        )
+        .click();
+      await ui
+        .getByLabel("Reconciliation photo URLs", { exact: true })
+        .fill("");
+      await ui
+        .getByRole("button", { name: "Prepare dry-run manifest", exact: true })
+        .click();
+      await ui
+        .locator(".google-reconciliation li")
+        .filter({ hasText: "google.prepare: succeeded" })
+        .nth(1)
+        .waitFor({ timeout: 90000 });
+      // Read the synthetic server state to distinguish the new completed command.
+      await ui.waitForFunction(
+        async () => {
+          const j = await (await fetch("/api/v1/google/reconciliation")).json();
+          return (
+            j.items[0]?.action === "google.prepare" &&
+            j.items[0]?.state === "succeeded"
+          );
+        },
+        null,
+        { timeout: 90000 },
       );
-      if (
-        sweepCommit &&
-        ["succeeded", "partial", "failed"].includes(sweepCommit.state)
-      )
-        break;
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-    assert.equal(sweepCommit?.state, "succeeded", JSON.stringify(sweepCommit));
-    assert.equal(fixture.state.trashed, true);
-    assert.equal(fixture.state.writes.length, beforePrepare + 2);
-  }
-  if (targetPolicy === "selected") {
-    // A separate exact manifest fails before intent, then keeps a newly protected
-    // untitled shared-album member when the same worker intent is retried.
-    fixture.state.trashed = false;
-    async function commands() {
-      return (
-        await (
-          await context.request.get(endpoint + "/api/v1/google/reconciliation")
-        ).json()
-      ).items;
-    }
-    async function waitCommand(predicate) {
-      let found;
-      for (let n = 0; n < 450; n++) {
-        found = (await commands()).find(predicate);
-        if (found && ["succeeded", "partial", "failed"].includes(found.state))
-          return found;
+      await ui
+        .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+        .first()
+        .click();
+      await preview
+        .getByRole("button", {
+          name: "Prepare Takeout Trash sweep",
+          exact: true,
+        })
+        .click();
+      await ui.waitForFunction(
+        async () => {
+          const j = await (await fetch("/api/v1/google/reconciliation")).json();
+          return (
+            j.items[0]?.action === "google.prepare-takeout" &&
+            j.items[0]?.state === "succeeded"
+          );
+        },
+        null,
+        { timeout: 90000 },
+      );
+      await ui
+        .locator(".google-reconciliation li")
+        .filter({ hasText: "google.prepare-takeout: succeeded" })
+        .waitFor({ timeout: 90000 });
+      await ui
+        .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+        .first()
+        .click();
+      await preview
+        .locator("pre")
+        .filter({ hasText: '"takeout-trash"' })
+        .waitFor({ timeout: 30000 });
+      assert.match(await preview.textContent(), /takeout-trash/);
+      const sweepId = (await preview.locator("p").first().textContent()).match(
+        /Manifest ([a-f0-9]{32})/,
+      )[1];
+      await preview
+        .getByText(
+          "I reviewed this manifest and authorize its listed executable operations.",
+          { exact: true },
+        )
+        .click();
+      await preview
+        .getByRole("button", { name: "Commit reviewed manifest", exact: true })
+        .click();
+      let sweepCommit;
+      for (let n = 0; n < 300; n++) {
+        const response = await context.request.get(
+          endpoint + "/api/v1/google/reconciliation",
+        );
+        sweepCommit = (await response.json()).items.find(
+          (x) =>
+            x.action === "google.commit" && x.params.manifestId === sweepId,
+        );
+        if (
+          sweepCommit &&
+          ["succeeded", "partial", "failed"].includes(sweepCommit.state)
+        )
+          break;
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
-      throw new Error(
-        "Timed out waiting for exact synthetic command " +
-          JSON.stringify(found),
+      assert.equal(
+        sweepCommit?.state,
+        "succeeded",
+        JSON.stringify(sweepCommit),
       );
+      assert.equal(fixture.state.trashed, true);
+      assert.equal(fixture.state.writes.length, beforePrepare + 2);
     }
+    if (targetPolicy === "selected") {
+      // A separate exact manifest fails before intent, then keeps a newly protected
+      // untitled shared-album member when the same worker intent is retried.
+      fixture.state.trashed = false;
+      async function commands() {
+        return (
+          await (
+            await context.request.get(
+              endpoint + "/api/v1/google/reconciliation",
+            )
+          ).json()
+        ).items;
+      }
+      async function waitCommand(predicate) {
+        let found;
+        for (let n = 0; n < 450; n++) {
+          found = (await commands()).find(predicate);
+          if (found && ["succeeded", "partial", "failed"].includes(found.state))
+            return found;
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        throw new Error(
+          "Timed out waiting for exact synthetic command " +
+            JSON.stringify(found),
+        );
+      }
+      assert.ok(
+        (await context.request.post(endpoint + "/fixture-takeout")).ok(),
+      );
+      const beforeIds = new Set((await commands()).map((j) => j.id));
+      await ui
+        .getByRole("button", { name: "Prepare dry-run manifest", exact: true })
+        .click();
+      const source = await waitCommand(
+        (j) => j.action === "google.prepare" && !beforeIds.has(j.id),
+      );
+      assert.equal(source.state, "succeeded");
+      await ui
+        .locator(`[data-reconciliation-job="${source.id}"]`)
+        .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+        .click();
+      await preview
+        .getByRole("button", {
+          name: "Prepare Takeout Trash sweep",
+          exact: true,
+        })
+        .click();
+      const prepared = await waitCommand(
+        (j) =>
+          j.action === "google.prepare-takeout" &&
+          j.params.sourceManifestId === source.id,
+      );
+      assert.equal(prepared.state, "succeeded");
+      await ui
+        .locator(`[data-reconciliation-job="${prepared.id}"]`)
+        .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+        .click();
+      await preview.getByText(new RegExp("Manifest " + prepared.id)).waitFor();
+      fixture.state.invalidDetails = true;
+      await preview
+        .getByText(
+          "I reviewed this manifest and authorize its listed executable operations.",
+          { exact: true },
+        )
+        .click();
+      await preview
+        .getByRole("button", { name: "Commit reviewed manifest", exact: true })
+        .click();
+      const failed = await waitCommand(
+        (j) =>
+          j.action === "google.commit" && j.params.manifestId === prepared.id,
+      );
+      assert.equal(failed.state, "partial");
+      assert.equal(fixture.state.writes.length, beforePrepare + 2);
+      fixture.state.invalidDetails = false;
+      fixture.state.member = true;
+      fixture.state.untitledMembership = true;
+      await ui
+        .getByRole("button", { name: "Retry failed preflight", exact: true })
+        .click();
+      await ui
+        .locator(".google-panel ol>li")
+        .filter({ hasText: "trash: succeeded — unchanged" })
+        .waitFor({ timeout: 30000 });
+      await ui
+        .locator(`[data-reconciliation-job="${failed.id}"]`)
+        .getByRole("button", { name: "Resume interrupted commit", exact: true })
+        .click();
+      const finished = await waitCommand((j) => j.id === failed.id);
+      // retry/resume is asynchronous; require the exact command to finish again.
+      let final = finished;
+      for (let n = 0; n < 150 && final.state !== "succeeded"; n++) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        final = (await commands()).find((j) => j.id === failed.id);
+      }
+      assert.equal(final.state, "succeeded", JSON.stringify(final));
+      assert.equal(fixture.state.trashed, false);
+      assert.equal(fixture.state.writes.length, beforePrepare + 2);
+    }
+  }
+  if (targetPolicy === "selected") {
+    // Exercise the entire normal-user path, then a lost acknowledgement and a
+    // fresh pass. No diagnostic job ID or manual reconciliation is needed.
+    fixture.state.member = false;
+    fixture.state.favorite = false;
+    fixture.state.untitledMembership = false;
+    fixture.state.trashed = false;
     assert.ok((await context.request.post(endpoint + "/fixture-takeout")).ok());
-    const beforeIds = new Set((await commands()).map((j) => j.id));
-    await ui
-      .getByRole("button", { name: "Prepare dry-run manifest", exact: true })
+    await ui.getByText("Advanced & troubleshooting", { exact: true }).click();
+    const normal = ui.getByRole("region", { name: "Google Photos sync" });
+    await normal
+      .getByRole("button", { name: /Prepare (sync|fresh pass)/ })
       .click();
-    const source = await waitCommand(
-      (j) => j.action === "google.prepare" && !beforeIds.has(j.id),
-    );
-    assert.equal(source.state, "succeeded");
-    await ui
-      .locator(`[data-reconciliation-job="${source.id}"]`)
-      .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+    await normal
+      .getByRole("heading", { name: "Review your sync" })
+      .waitFor({ timeout: 90000 });
+    const before = fixture.state.writes.length;
+    await ui.screenshot({
+      path: root + ".local/qualification/sync-review.png",
+      fullPage: true,
+    });
+    fixture.state.failNextWrite = true;
+    await normal
+      .getByRole("button", { name: "Move 1 photo to Trash", exact: true })
       .click();
-    await preview
-      .getByRole("button", { name: "Prepare Takeout Trash sweep", exact: true })
+    await normal
+      .getByRole("heading", { name: "Sync paused", exact: true })
+      .waitFor({ timeout: 60000 });
+    assert.equal(fixture.state.trashed, true);
+    assert.equal(fixture.state.writes.length, before + 1);
+    await normal
+      .getByRole("button", { name: "Prepare fresh pass", exact: true })
       .click();
-    const prepared = await waitCommand(
-      (j) =>
-        j.action === "google.prepare-takeout" &&
-        j.params.sourceManifestId === source.id,
-    );
-    assert.equal(prepared.state, "succeeded");
-    await ui
-      .locator(`[data-reconciliation-job="${prepared.id}"]`)
-      .getByRole("button", { name: "Inspect prepared manifest", exact: true })
+    await normal
+      .getByRole("heading", { name: "Everything is kept", exact: true })
+      .waitFor({ timeout: 90000 });
+    assert.equal(fixture.state.writes.length, before + 1);
+    await ui.screenshot({
+      path: root + ".local/qualification/sync-fresh-pass.png",
+      fullPage: true,
+    });
+    // If the prior request did not apply, a new reviewed pass picks it up.
+    fixture.state.trashed = false;
+    await normal
+      .getByRole("button", { name: "Prepare sync", exact: true })
       .click();
-    await preview.getByText(new RegExp("Manifest " + prepared.id)).waitFor();
-    fixture.state.invalidDetails = true;
-    await preview
-      .getByText(
-        "I reviewed this manifest and authorize its listed executable operations.",
-        { exact: true },
-      )
+    await normal
+      .getByRole("heading", { name: "Review your sync" })
+      .waitFor({ timeout: 90000 });
+    await normal
+      .getByRole("button", { name: "Move 1 photo to Trash", exact: true })
       .click();
-    await preview
-      .getByRole("button", { name: "Commit reviewed manifest", exact: true })
-      .click();
-    const failed = await waitCommand(
-      (j) =>
-        j.action === "google.commit" && j.params.manifestId === prepared.id,
-    );
-    assert.equal(failed.state, "partial");
-    assert.equal(fixture.state.writes.length, beforePrepare + 2);
-    fixture.state.invalidDetails = false;
-    fixture.state.member = true;
-    fixture.state.untitledMembership = true;
-    await ui
-      .getByRole("button", { name: "Retry failed preflight", exact: true })
-      .click();
-    await ui
-      .locator(".google-panel ol>li")
-      .filter({ hasText: "trash: succeeded — unchanged" })
-      .waitFor({ timeout: 30000 });
-    await ui
-      .locator(`[data-reconciliation-job="${failed.id}"]`)
-      .getByRole("button", { name: "Resume interrupted commit", exact: true })
-      .click();
-    const finished = await waitCommand((j) => j.id === failed.id);
-    // retry/resume is asynchronous; require the exact command to finish again.
-    let final = finished;
-    for (let n = 0; n < 150 && final.state !== "succeeded"; n++) {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      final = (await commands()).find((j) => j.id === failed.id);
-    }
-    assert.equal(final.state, "succeeded", JSON.stringify(final));
-    assert.equal(fixture.state.trashed, false);
-    assert.equal(fixture.state.writes.length, beforePrepare + 2);
+    await normal
+      .getByRole("heading", { name: "Sync complete", exact: true })
+      .waitFor({ timeout: 60000 });
+    assert.equal(fixture.state.writes.length, before + 2);
+    await ui.screenshot({
+      path: root + ".local/qualification/sync-complete.png",
+      fullPage: true,
+    });
+    await ui.setViewportSize({ width: 390, height: 844 });
+    await ui.screenshot({
+      path: root + ".local/qualification/sync-mobile.png",
+      fullPage: true,
+    });
+    await ui.setViewportSize({ width: 1280, height: 900 });
   }
   const completedJobs = await ui.locator(".google-panel ol>li").count();
   console.log(
@@ -619,19 +713,22 @@ try {
       failedPairingPreservesEndpoint: true,
       wss: true,
       jobsCompleted: completedJobs,
-      dryRunManifestAndCommit: true,
+      legacyWorkbench: !process.env.PHOTOFLOW_TEST_SYNC_ONLY,
+      dryRunManifestAndCommit: !process.env.PHOTOFLOW_TEST_SYNC_ONLY,
       preparationDidNotMutateGoogle: true,
-      manifestDownloadExactBytes: true,
-      fixtureOperationTypes: 23,
-      directOriginalImport: true,
-      duplicateOriginalSkipped: true,
-      accountBoundLocalVerification: true,
-      lostWriteReconciledWithoutReplay: true,
+      manifestDownloadExactBytes: !process.env.PHOTOFLOW_TEST_SYNC_ONLY,
+      fixtureOperationTypes: process.env.PHOTOFLOW_TEST_SYNC_ONLY ? 0 : 23,
+      directOriginalImport: !process.env.PHOTOFLOW_TEST_SYNC_ONLY,
+      duplicateOriginalSkipped: !process.env.PHOTOFLOW_TEST_SYNC_ONLY,
+      accountBoundLocalVerification: !process.env.PHOTOFLOW_TEST_SYNC_ONLY,
+      lostWriteReconciledWithoutReplay: !process.env.PHOTOFLOW_TEST_SYNC_ONLY,
       googleRequests: fixture.calls,
       phases: true,
       sanitizedDiagnostics: true,
       productionTakeoutSweep: targetPolicy === "selected",
-      preflightRetryPreservesUntitledAlbumMember: targetPolicy === "selected",
+      preflightRetryPreservesUntitledAlbumMember:
+        targetPolicy === "selected" && !process.env.PHOTOFLOW_TEST_SYNC_ONLY,
+      normalUserFreshPassAfterLostAcknowledgement: targetPolicy === "selected",
       realGoogleTraffic: false,
     }),
   );

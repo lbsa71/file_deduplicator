@@ -20,7 +20,8 @@ export const canonicalJSON = (value) =>
         )
       : item,
   );
-// One background service-worker context owns this store. Persisted locks are never stolen.
+// One background service-worker context owns this store. In-memory locks fence live work.
+// Retention passes can outlive an abandoned persisted lock; pilot writes cannot.
 export class BrowserJournal {
   constructor(storage, { digest = checksum } = {}) {
     this.storage = storage;
@@ -31,17 +32,22 @@ export class BrowserJournal {
   key(id) {
     return "pilot-record:" + id;
   }
-  async lock(account) {
+  async lock(account, { retention = false } = {}) {
     requireThat(!this.busy.has(account), "Pilot writer busy", "BUSY");
     this.busy.add(account);
     const key = "pilot-lock:" + account;
     try {
+      const abandoned = (await this.storage.get(key))[key];
+      const pending = abandoned && retention ? await this.pending(account) : [];
       requireThat(
-        !(await this.storage.get(key))[key],
+        !abandoned ||
+          (retention &&
+            pending.every((r) => r.plan.targetPolicy === "takeout-retention") &&
+            (abandoned.retention === true || pending.length > 0)),
         "Interrupted pilot lock requires inspection",
         "BUSY",
       );
-      await this.storage.set({ [key]: { account } });
+      await this.storage.set({ [key]: { account, retention } });
     } catch (e) {
       this.busy.delete(account);
       throw e;

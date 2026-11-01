@@ -110,7 +110,7 @@ export class RetentionTrash {
     };
     // Expiry is lease metadata; immutable decision identity excludes renewal.
 
-    const release = await this.journal.lock(this.account);
+    const release = await this.journal.lock(this.account, { retention: true });
     let sent = false,
       record;
     try {
@@ -129,7 +129,11 @@ export class RetentionTrash {
         return previous.result;
       }
       requireThat(
-        (await this.journal.pending(this.account)).length === 0,
+        (await this.journal.pending(this.account)).every(
+          (r) =>
+            r.plan.targetPolicy === "takeout-retention" &&
+            r.plan.retentionScope.manifestId !== scope.manifestId,
+        ),
         "Unresolved Google write",
         "UNRESOLVED",
       );

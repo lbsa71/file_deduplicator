@@ -74,7 +74,7 @@ export function toolkitBrowserFixture({ personal = false } = {}) {
         case "lcxiM":
           result = data[0]
             ? [[item("media-b", true)], null]
-            : [[photo()], "next"];
+            : [state.trashed ? [] : [photo()], "next"];
           write = false;
           break;
         case "EzkLib":
