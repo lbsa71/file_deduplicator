@@ -143,3 +143,17 @@ class GoogleSyncTests(unittest.TestCase):
         self.assertEqual(view["review"]["trash"], 0)
         self.assertEqual(view["review"]["keep"], 1)
         self.assertFalse(any(op == "trash" for op, _, _ in self.remote.calls))
+
+    def test_legacy_queued_production_plan_migrates_to_paused_without_dispatch(self):
+        self.configure()
+        self.candidate()
+        manifest = self.sweep(self.prepare())
+        run = self.service.commit("alice", manifest["id"], manifest["sha256"])
+        params = dict(run["params"])
+        params.pop("passVersion")
+        self.service.jobs.update(run["id"], params=params)
+        self.service.runner.run_once()
+        self.assertEqual(self.service.jobs.get(run["id"])["state"], "partial")
+        self.assertEqual(self.service.sync.status("alice")["state"], "paused")
+        self.assertTrue(self.service.sync.status("alice")["paused"])
+        self.assertFalse(any(op == "trash" for op, _, _ in self.remote.calls))
