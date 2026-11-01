@@ -218,3 +218,29 @@ resumed, preserving its 272 completed steps. Live execution then passed target
 273 and produced further verified Trash receipts, with no new errors at the
 resume checkpoint. The sweep remains a running finite operation, not a completed
 full-account cleanup.
+
+## Offline stop and handoff, 2026-11-01
+
+The desktop went offline at approximately 22:26 Stockholm time on 2026-10-31
+while an exact-target write was in flight. The account guard preserved its unknown
+outcome and stopped the coordinator. At the checkpoint, 3,079 items had verified
+Trash receipts and 10 had fresh protection/unchanged receipts; 3,769 items were
+retained in total, with 4,595 operations unresolved or remaining. The owner
+postponed execution until the Mac can stay online later on 2026-11-01.
+
+The operation remains stopped. Its current manifest expires at 17:17 Stockholm
+time on 2026-11-01. Recovery requires read-only reconciliation of the unknown
+intent and, after expiry, a fresh full inventory/Takeout manifest that excludes
+items already in Trash. The current checkpoint and exact IDs are private local
+artifacts, not committed account data. See the [production sweep resume runbook](production-sweep-resume.md).
+
+Transport cleanup now distinguishes idle/timeout reconnects from authentication
+or protocol rejection and avoids closing an already disconnected peer again.
+Invalid protocol still closes with 1008; interrupted writes still become unknown.
+An expiry error explains the fresh-inventory path rather than encouraging edits
+to the frozen manifest or resending completed operations.
+
+Offline/handoff validation: 159 backend tests and 157 package tests pass. The
+selected-account synthetic extension E2E completed 161 fixture Google requests,
+including exact-intent recovery and preserved untitled shared membership. No real
+Google operation was queued as part of this handoff preparation.

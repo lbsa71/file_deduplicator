@@ -216,6 +216,94 @@ class WorkerHTTPTests(unittest.TestCase):
         self.assertEqual(status["state"], "offline")
         self.assertEqual(status["jobs"][0]["state"], "queued")
 
+    def worker_auth(self):
+        store = self.app.state.google_workers
+        pair = store.pair(store.pairing("alice", "google-a")["code"], "google-a")
+        return {
+            "type": "auth",
+            "token": pair["token"],
+            "account": "google-a",
+            "protocol": JOB_PROTOCOL_VERSION,
+            "capabilities": [
+                {"operation": name, "version": spec["version"]}
+                for name, spec in JOB_SPECS.items()
+            ],
+        }
+
+    def test_idle_transport_close_preserves_pairing_and_allows_reconnection(self):
+        import asyncio
+        from unittest.mock import patch
+        from starlette.websockets import WebSocketDisconnect
+
+        auth = self.worker_auth()
+        original = asyncio.wait
+
+        async def idle(tasks, **kwargs):
+            if kwargs.get("timeout") == 45:
+                return set(), set(tasks)
+            return await original(tasks, **kwargs)
+
+        with patch("photoflow_web.google_workers.asyncio.wait", idle):
+            with self.client.websocket_connect(
+                "/api/v1/google/worker", headers={"Origin": self.extension}
+            ) as ws:
+                ws.send_json(auth)
+                self.assertEqual(ws.receive_json()["type"], "welcome")
+                with self.assertRaises(WebSocketDisconnect) as stopped:
+                    ws.receive_json()
+                self.assertEqual(stopped.exception.code, 1001)
+        self.assertEqual(
+            self.app.state.google_workers.authenticate(auth["token"], "google-a")[
+                "owner"
+            ],
+            "alice",
+        )
+        with self.client.websocket_connect(
+            "/api/v1/google/worker", headers={"Origin": self.extension}
+        ) as ws:
+            ws.send_json(auth)
+            self.assertEqual(ws.receive_json()["type"], "welcome")
+
+    def test_disconnected_peer_is_not_closed_again_or_reported_as_bad_pairing(self):
+        from unittest.mock import patch, AsyncMock
+        from threading import Event
+
+        disconnected = Event()
+        store = self.app.state.google_workers
+        original = store.disconnect
+
+        def disconnect(ident):
+            original(ident)
+            disconnected.set()
+
+        with (
+            patch.object(store, "disconnect", disconnect),
+            patch(
+                "starlette.websockets.WebSocket.close", new_callable=AsyncMock
+            ) as close,
+        ):
+            with self.client.websocket_connect(
+                "/api/v1/google/worker", headers={"Origin": self.extension}
+            ) as ws:
+                ws.send_json(self.worker_auth())
+                self.assertEqual(ws.receive_json()["type"], "welcome")
+                ws.send({"type": "websocket.disconnect", "code": 1006})
+                self.assertTrue(disconnected.wait(timeout=2))
+            close.assert_not_awaited()
+
+    def test_invalid_worker_protocol_still_closes_with_policy_error(self):
+        from starlette.websockets import WebSocketDisconnect
+
+        auth = self.worker_auth()
+        auth["protocol"] = 0
+        with self.client.websocket_connect(
+            "/api/v1/google/worker", headers={"Origin": self.extension}
+        ) as ws:
+            ws.send_json(auth)
+            with self.assertRaises(WebSocketDisconnect) as stopped:
+                ws.receive_json()
+            self.assertEqual(stopped.exception.code, 1008)
+
     def test_progress_is_owner_scoped_and_new_attempt_can_start_from_checking(self):
         paired = self.app.state.google_workers.pairing("alice", "google-a")
         token = self.app.state.google_workers.pair(paired["code"], "google-a")

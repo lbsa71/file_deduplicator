@@ -131,3 +131,25 @@ class TakeoutSweepTests(unittest.TestCase):
         (self.library.root / record["file"]["relative_path"]).write_bytes(b"bad")
         with self.assertRaises(ValueError):
             self.service.retention_check("alice", "account-a", scope)
+
+    def test_expired_sweep_resume_requires_fresh_inventory_without_replaying_writes(
+        self,
+    ):
+        self.candidate()
+        sweep = self.sweep(self.prepare())
+        enqueue = self.remote.enqueue_once
+
+        def remote(*args, retention_scope=None, **kwargs):
+            return enqueue(*args, **kwargs)
+
+        self.remote.enqueue_once = remote
+        self.remote.fail = "trash"
+        job = self.service.commit("alice", sweep["id"], sweep["sha256"])
+        self.service.runner.run_once()
+        self.assertEqual(self.service.jobs.get(job["id"])["state"], "partial")
+        calls = copy.deepcopy(self.remote.calls)
+        self.now = sweep["expiresAt"] + 1
+        with self.assertRaisesRegex(ValueError, "fresh full inventory"):
+            self.service.resume("alice", job["id"])
+        self.assertEqual(self.remote.calls, calls)
+        self.assertEqual(self.service.jobs.get(job["id"])["state"], "partial")

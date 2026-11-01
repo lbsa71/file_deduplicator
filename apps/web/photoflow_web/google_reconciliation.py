@@ -209,6 +209,10 @@ class Reconciliation:
         ):
             raise Conflict("Library or Google account changed; prepare again")
         if expiration and self.now() > value["expiresAt"]:
+            if value.get("capabilities", {}).get("productionRetention"):
+                raise Conflict(
+                    "Manifest expired; reconcile any unknown write, then prepare a fresh full inventory and Takeout Trash sweep. Completed Trash items are excluded from the library inventory."
+                )
             raise Conflict("Manifest expired; prepare again")
         if not self.library.available():
             raise OSError("Library storage is unavailable")

@@ -1006,6 +1006,7 @@ def install_worker_routes(
             check(isinstance(value, dict))
             return value
 
+        close_code = 1011
         try:
             first = await asyncio.wait_for(message(), 10)
             check(
@@ -1051,6 +1052,7 @@ def install_worker_routes(
                 signal = None
                 event.clear()
                 if not done:
+                    close_code = 1001
                     break
                 if receive in done:
                     m = receive.result()
@@ -1077,14 +1079,14 @@ def install_worker_routes(
                     else:
                         check(False)
                     receive = asyncio.create_task(message())
-        except (
-            WebSocketDisconnect,
-            ValueError,
-            TypeError,
-            KeyError,
-            asyncio.TimeoutError,
-        ):
-            pass
+        except WebSocketDisconnect:
+            # The peer is already gone. Preserve an interrupted write as unknown
+            # without sending a second close or labelling the pairing invalid.
+            close_code = None
+        except asyncio.TimeoutError:
+            close_code = 1001
+        except (ValueError, TypeError, KeyError):
+            close_code = 1008
         finally:
             for task in [receive, signal]:
                 if task:
@@ -1095,7 +1097,8 @@ def install_worker_routes(
             if ident and active.get(ident) is event:
                 active.pop(ident, None)
                 store.disconnect(ident)
-            try:
-                await ws.close(code=1008)
-            except RuntimeError:
-                pass
+            if close_code is not None:
+                try:
+                    await ws.close(code=close_code)
+                except (RuntimeError, WebSocketDisconnect):
+                    pass
