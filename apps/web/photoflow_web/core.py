@@ -1,11 +1,15 @@
 """Filesystem authority, disposable read catalog, and serialized mutations."""
 
 import hashlib, json, os, re, sqlite3, threading, time, uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from contextlib import contextmanager
 from photoflow.adapters import LocalFileSystem
-from photoflow.model import Record, SIDECAR, encoded
+from photoflow.content import fingerprint
+from photoflow.decisions import DECISIONS, decision_path, is_new_occurrence, read_decisions, trash_manifest
+from photoflow.model import Record, SIDECAR, encoded, timestamp
 from photoflow.metadata import resolve
+from photoflow.ports import BusyError
 from .query import Query, TABLES, ORDER, create_indexes, index_record
 
 
@@ -66,6 +70,9 @@ class Library:
             db.executescript(
                 "CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,path TEXT,revision TEXT,data TEXT,stamp TEXT); CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner TEXT,state TEXT,data TEXT);"
             )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS photos_content_hash ON photos(json_extract(data, '$.file.sha256'))"
+            )
             create_indexes(db)
             from .google_identity import create_identity_index
             create_identity_index(db)
@@ -86,8 +93,11 @@ class Library:
         )
 
     @contextmanager
-    def writer(self):
-        with self.mutex:
+    def writer(self, *, wait=True):
+        busy = "Library is busy with another operation. Try again when it finishes in Activity."
+        if not self.mutex.acquire(blocking=wait):
+            raise Conflict(busy)
+        try:
             if not self.available():
                 raise OSError("Storage unavailable")
             if load(self.root / ".photoflow/library.json")["schema_version"] != 2:
@@ -95,6 +105,10 @@ class Library:
             with self.fs.lock():
                 self.recover()
                 yield
+        except BusyError as error:
+            raise Conflict(busy) from error
+        finally:
+            self.mutex.release()
 
     def path(self, value):
         if (
@@ -168,7 +182,7 @@ class Library:
     def transaction(self, moves, writes, remove=()):
         for move in moves:
             source = self.path(move["from"])
-            if source.is_file():
+            if source.is_file() and "sha256" not in move:
                 before = source.stat()
                 with source.open("rb") as stream:
                     move["sha256"] = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -198,15 +212,9 @@ class Library:
             expected_writes[destination] = (
                 digest(existing.read_bytes()) if existing.exists() else None
             )
-        op = {
-            "id": uuid.uuid4().hex,
-            "moves": moves,
-            "writes": writes,
-            "expected_writes": expected_writes,
-            "remove": list(remove),
-        }
-        atomic(self.ops / (op["id"] + ".json"), op)
-        self.recover()
+        from photoflow.web_operations import execute
+
+        execute(self.fs, uuid.uuid4().hex, moves, writes, remove, expected_writes)
 
     def put_index(self, record, sidecar, connection=None):
         raw = sidecar.read_bytes()
@@ -265,6 +273,8 @@ class Library:
 
     def _rebuild(self, connection):
         seen = []
+        decision_paths = set(self.fs.list_files(DECISIONS))
+        trash_decisions = {}
 
         def index(record, sidecar):
             self.put_index(record, sidecar, connection)
@@ -286,8 +296,14 @@ class Library:
                 p = Path(parent) / name
                 if p.is_symlink():
                     continue
-                record = Record.parse(p.read_bytes(), self.id).data
-                index(record, p)
+                occurrence = Record.parse(p.read_bytes(), self.id)
+                if occurrence.sha and is_new_occurrence(occurrence) and decision_path(occurrence.sha) in decision_paths:
+                    if occurrence.sha not in trash_decisions:
+                        decision = read_decisions(self.fs, occurrence.sha).get('trashed', {})
+                        trash_decisions[occurrence.sha] = decision.get('value', False)
+                    if trash_decisions[occurrence.sha]:
+                        continue
+                index(occurrence.data, p)
         for p in (self.root / ".photoflow/trash").glob("*/record.json"):
             d = load(p)
             index(d, p)
@@ -401,6 +417,19 @@ class Library:
             }
         )
 
+    def verified_content(self, record, path):
+        sha, sample = fingerprint(self.fs, path)
+        if record["file"].get("sha256") not in (None, sha):
+            raise Conflict("Photo content changed. Reconcile the library and try again.")
+        record["file"].update(sha256=sha, sample_sha256=sample)
+        return sha
+
+    def decision_write(self, record, sha, field, value, actor):
+        decisions = read_decisions(self.fs, sha)
+        decisions[field] = {"value": value, "at": timestamp(datetime.now(timezone.utc)),
+                            "record_id": record["record_id"], "actor": actor}
+        return decision_path(sha), decisions
+
     def metadata(self, ident, revision, sets, resets, actor):
         allowed = {
             "title",
@@ -440,10 +469,19 @@ class Library:
             d["overrides"].update(sets)
             for k in resets:
                 d["overrides"].pop(k, None)
+            writes = None
+            if "favorite" in sets or "favorite" in resets:
+                sha = self.verified_content(d, d["file"]["relative_path"])
+                path, decisions = self.decision_write(d, sha, "favorite", sets.get("favorite"), actor)
+                d["favorite_decision"] = decisions["favorite"]
+                writes = {path: decisions, p.relative_to(self.root).as_posix(): d}
             d["resolved"] = resolve(Record(d))
             self.event(d, actor, "metadata_edited", set=sets, reset=resets)
             Record.parse(encoded(d), self.id)
-            atomic(p, d)
+            if writes is None:
+                atomic(p, d)
+            else:
+                self.transaction([], writes)
             self.put_index(d, p)
         return self.get(ident)
 
@@ -486,29 +524,22 @@ class Library:
             if d.get("lifecycle") == "trashed":
                 return
             old = d["file"]["relative_path"]
-            base = ".photoflow/trash/" + ident
+            sha = self.verified_content(d, old)
+            manifest = trash_manifest(Record(d))
+            manifest_path = manifest["sidecar"].removesuffix("record.json") + "manifest.json"
+            decision_file, decisions = self.decision_write(d, sha, "trashed", True, actor)
             d["lifecycle"] = "trashed"
             self.event(d, actor, "trashed", path=old)
             # Relink active duplicate copies before removing their keeper.
             with self.db() as db:
-                others = [
-                    json.loads(r[0]) for r in db.execute("SELECT data FROM photos")
-                ]
-            copies = [
-                x
-                for x in others
-                if x["record_id"] != ident
-                and x.get("lifecycle") != "trashed"
-                and x["file"].get("sha256") == d["file"].get("sha256")
-            ]
+                copies = [json.loads(r[0]) for r in db.execute(
+                    "SELECT data FROM photos JOIN listing USING (id) "
+                    "WHERE photos.id != ? AND listing.trashed = 0 "
+                    "AND json_extract(data, '$.file.sha256') = ?", (ident, sha))]
             writes = {
-                base + "/record.json": d,
-                base
-                + "/manifest.json": {
-                    "original_path": old,
-                    "media": base + "/original" + Path(old).suffix,
-                    "sidecar": base + "/record.json",
-                },
+                manifest["sidecar"]: d,
+                manifest_path: manifest,
+                decision_file: decisions,
             }
             if copies and not d.get("duplicate_of"):
                 keeper = min(copies, key=lambda x: x["record_id"])
@@ -538,11 +569,11 @@ class Library:
                     self.event(x, actor, "keeper_promoted", keeper=keeper["record_id"])
                     writes[x["file"]["relative_path"] + SIDECAR] = x
             self.transaction(
-                [{"from": old, "to": writes[base + "/manifest.json"]["media"]}],
+                [{"from": old, "to": manifest["media"], "sha256": sha}],
                 writes,
                 [str(p.relative_to(self.root))],
             )
-            self.put_index(d, self.path(base + "/record.json"))
+            self.put_index(d, self.path(manifest["sidecar"]))
             for x in copies:
                 if x["file"]["relative_path"] + SIDECAR in writes:
                     self.put_index(x, self.path(x["file"]["relative_path"] + SIDECAR))
@@ -555,11 +586,13 @@ class Library:
             if not manifest:
                 raise Conflict("Not in trash")
             target = manifest["original_path"]
+            sha = self.verified_content(d, manifest["media"])
+            decision_file, decisions = self.decision_write(d, sha, "trashed", False, actor)
             d["lifecycle"] = "active"
             self.event(d, actor, "restored", path=target)
             self.transaction(
-                [{"from": manifest["media"], "to": target}],
-                {target + SIDECAR: d},
+                [{"from": manifest["media"], "to": target, "sha256": sha}],
+                {target + SIDECAR: d, decision_file: decisions},
                 [manifest["sidecar"], base + "/manifest.json"],
             )
             d["file"]["fingerprint"] = self.fs.stat(target).to_dict()

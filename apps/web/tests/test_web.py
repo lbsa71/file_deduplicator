@@ -264,6 +264,83 @@ class LibraryTests(unittest.TestCase):
         self.assertEqual(len(survivor["sources"]), 2)
         self.assertNotIn("favorite", survivor["overrides"])
 
+    def import_photo(self, name, content, metadata=None, *, move_files=True):
+        import json
+        from photoflow.adapters import NoEmbeddedMetadata, RandomIds, SystemClock
+        from photoflow.runner import Runner, Config
+
+        inbox = self.root / "inbox"
+        inbox.mkdir(exist_ok=True)
+        (inbox / name).write_bytes(content)
+        if metadata is not None:
+            (inbox / (name + ".json")).write_text(json.dumps(metadata))
+        result = Runner(self.lib.fs, SystemClock(), RandomIds(), NoEmbeddedMetadata(),
+                        Config(settle_seconds=0, move_files=move_files)).run()
+        self.assertEqual(result.errors, [])
+        self.lib.rebuild()
+
+    def test_reimport_stays_trashed_until_a_later_restore(self):
+        self.import_photo("original.jpg", b"photo")
+        original, = self.lib.listing()["items"]
+        self.lib.trash(original["id"], original["revision"], "test")
+        self.import_photo("renamed.jpg", b"photo", {"description": "From the export"})
+        self.assertEqual(self.lib.listing()["total"], 0)
+        trashed = self.lib.listing(trash=True)["items"]
+        self.assertEqual(len(trashed), 2)
+        reimport, = [p for p in trashed if p["id"] != original["id"]]
+        self.assertEqual(reimport["metadata"]["description"], "From the export")
+        original_trash = self.lib.get(original["id"])
+        self.lib.restore(original["id"], original_trash["revision"], "test")
+        self.import_photo("later.jpg", b"photo")
+        self.assertEqual(self.lib.listing()["total"], 1)
+        self.assertEqual(self.lib.listing(duplicates=True)["total"], 2)
+        self.assertEqual(self.lib.listing(trash=True)["total"], 1)
+
+    def test_existing_trash_is_backfilled_outside_the_trash_folder(self):
+        from photoflow.decisions import decision_path
+
+        self.import_photo("original.jpg", b"photo")
+        original, = self.lib.listing()["items"]
+        self.lib.trash(original["id"], original["revision"], "test")
+        sha = self.lib.get(original["id"])["file"]["sha256"]
+        path = self.root / decision_path(sha)
+        path.unlink()  # Simulate a library trashed by the previous version.
+        self.import_photo("renamed.jpg", b"photo")
+        self.assertEqual(self.lib.listing()["total"], 0)
+        self.assertEqual(self.lib.listing(trash=True)["total"], 2)
+        self.assertTrue(path.is_file())
+
+    def test_matching_reimport_stays_hidden_during_a_metadata_only_pass(self):
+        self.import_photo("original.jpg", b"photo")
+        original, = self.lib.listing()["items"]
+        self.lib.trash(original["id"], original["revision"], "test")
+        self.import_photo("renamed.jpg", b"photo", move_files=False)
+        self.assertTrue((self.root / "inbox/renamed.jpg").is_file())
+        self.assertEqual(self.lib.listing()["total"], 0)
+        self.import_photo("unrelated.jpg", b"different")
+        self.assertEqual(self.lib.listing()["total"], 1)
+        self.assertEqual(self.lib.listing(trash=True)["total"], 2)
+
+    def test_later_unfavourite_survives_an_older_favourite_import(self):
+        from datetime import datetime
+
+        self.import_photo("original.jpg", b"photo", {"favorited": True})
+        item, = self.lib.listing()["items"]
+        favorite = self.lib.metadata(item["id"], item["revision"], {"favorite": True}, [], "test")
+        unfavorite = self.lib.metadata(item["id"], favorite["revision"], {"favorite": False}, [], "test")
+        self.assertGreater(datetime.fromisoformat(unfavorite["favorite_decision"]["at"]),
+                           datetime.fromisoformat(favorite["favorite_decision"]["at"]))
+        self.import_photo("renamed.jpg", b"photo", {"favorited": True, "description": "Richer"})
+        for photo in self.lib.listing(duplicates=True)["items"]:
+            record = self.lib.get(photo["id"])
+            self.assertFalse(record["resolved"]["favorite"])
+            self.assertIs(record["favorite_decision"]["value"], False)
+            self.assertTrue(record["favorite_decision"]["at"].endswith("Z"))
+        original = self.lib.get(item["id"])
+        self.lib.metadata(item["id"], original["revision"], {}, ["favorite"], "test")
+        self.import_photo("other.jpg", b"other")
+        self.assertEqual(self.lib.listing(favorite=True)["total"], 1)
+
     def test_watcher_ignores_completed_moves_but_not_missing_indexed_files(self):
         from photoflow_web.watch import Reconciler
 

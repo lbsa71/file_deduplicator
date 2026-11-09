@@ -246,7 +246,11 @@ export function BatchDialog({
         const j = await api("/jobs/" + r.job_id);
         if (j.state === "failed") throw Error(j.error);
         if (j.state === "succeeded") {
-          setResult(j.result);
+          if (draft.action === "trash" && j.result.succeeded === plan.count) {
+            onClose();
+          } else {
+            setResult(j.result);
+          }
           onDone();
           return;
         }

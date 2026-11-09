@@ -217,7 +217,10 @@ def resolve(record):
             resolved[field] = any(a['value'] is True for a in assertions)
         elif assertions:
             resolved[field] = assertions[0]['value']
+    favorite = record.data.get('favorite_decision')
     for field, value in record.data['overrides'].items():
+        if field == 'favorite' and favorite is not None:
+            continue
         if field not in resolved:
             continue
         if field == 'capture_time' and value is not None and valid_date(value) is None:
@@ -227,13 +230,19 @@ def resolve(record):
             raise ValueError('place must be an ordered array of nonempty labels')
         resolved[field] = copy.deepcopy(value)
         provenance.setdefault(field, []).append({'value': copy.deepcopy(value), 'source': 'human', 'field': field})
+    if favorite is not None:
+        if favorite['value'] is not None:
+            resolved['favorite'] = favorite['value']
+        provenance['favorite'].append({'value': favorite['value'], 'source': 'human',
+                                       'field': 'favorite', 'at': favorite['at']})
     resolved['provenance'] = provenance
     return resolved
 
 
 def resolution_key(record):
     return input_key([RESOLVER_VERSION, record.data['sources'], record.data['overrides'],
-                      record.data['stages'].get('embedded_metadata'), record.data['stages'].get('place')])
+                      record.data['stages'].get('embedded_metadata'), record.data['stages'].get('place'),
+                      *([record.data['favorite_decision']] if 'favorite_decision' in record.data else [])])
 
 
 def merge_sources(target, incoming):

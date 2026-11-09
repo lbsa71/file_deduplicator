@@ -7,6 +7,13 @@ from .adapters import _rename_no_replace
 from .model import encoded
 
 
+def execute(fs, ident, moves, writes, remove, expected_writes):
+    operation = {'id': ident, 'moves': moves, 'writes': writes,
+                 'remove': list(remove), 'expected_writes': expected_writes}
+    fs.atomic_write(f'.photoflow/web-operations/{ident}.json', encoded(operation), replace=False)
+    recover(fs)
+
+
 def recover(fs):
     for manifest in fs.list_files(".photoflow/web-operations"):
         if not manifest.endswith(".json"):

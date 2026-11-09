@@ -292,6 +292,14 @@ class WorkspaceTests(unittest.TestCase):
             self.library.path(restored["file"]["relative_path"]).read_bytes(), b"abc"
         )
 
+    def test_trash_preview_reports_a_busy_library(self):
+        photo = self.photo()
+        with self.library.fs.lock():
+            with self.assertRaisesRegex(Conflict, "Library is busy"):
+                self.workspace.create_plan(
+                    "alice", {"action": "trash"}, targets=[self.target(photo)]
+                )
+
     def test_concurrent_execution_claims_plan_once(self):
         from concurrent.futures import ThreadPoolExecutor
 

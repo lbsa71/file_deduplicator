@@ -271,6 +271,51 @@ try {
   }
   expect(await originals(after.items)).toEqual(hashes);
   expect(await read("/views")).toEqual({ items: [] });
+  const selectThree = async () => {
+    for (let i = 0; i < 3; i++) {
+      await page
+        .getByRole("checkbox", { name: "Select photo", exact: true })
+        .nth(i)
+        .check();
+    }
+    await page
+      .getByRole("button", { name: "Batch actions", exact: true })
+      .click();
+  };
+  const preview = () =>
+    dialog().getByRole("button", { name: "Preview changes", exact: true });
+  const applyThree = () =>
+    dialog().getByRole("button", { name: "Apply to 3 photos", exact: true });
+  await selectThree();
+  await dialog().getByRole("combobox").first().selectOption("trash");
+  await page.route(
+    "**/api/v1/batch-plans",
+    (route) => route.fulfill({
+      status: 409, json: { detail: "Library is busy with another operation." },
+    }),
+    { times: 1 },
+  );
+  await preview().click();
+  await expect(dialog().getByRole("alert")).toHaveText(
+    "Library is busy with another operation.",
+  );
+  await expect(preview()).toBeEnabled();
+  await preview().click();
+  await applyThree().click();
+  await expect(dialog()).toHaveCount(0);
+  await count(105);
+  await page.getByRole("link", { name: "Trash", exact: true }).click();
+  await count(3);
+  await selectThree();
+  await preview().click();
+  await applyThree().click();
+  await expect(dialog().getByRole("status")).toHaveText(
+    "3 updated · 0 conflicts · 0 failed",
+  );
+  await dialog().getByRole("button", { name: "Done", exact: true }).click();
+  await count(0);
+  await page.getByRole("link", { name: "Photos", exact: true }).click();
+  await count(108);
   expect(errors).toEqual([]);
   await page.screenshot({
     path: "/tmp/photoflow-query-smoke.png",
@@ -295,7 +340,7 @@ try {
   });
   expect(errors).toEqual([]);
   console.log(
-    "Query UX passed: rendered thumbnails; people Any/All; dates/favourites; reload/Back/Forward; saved-view CRUD; stale selection response rejected; frozen all-pages selection; reviewed batch adds labels to 108 photos; original bytes and people preserved; desktop and 360px layouts without horizontal overflow.",
+    "Query UX passed: rendered thumbnails; filters and history; saved-view CRUD; frozen all-pages selection; batch labels; three-photo Trash and Restore; original bytes preserved; desktop and mobile layouts.",
   );
 } finally {
   await browser.close();

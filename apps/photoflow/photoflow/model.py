@@ -196,6 +196,7 @@ class WorkItem:
     saved: bytes | None = None
     blocked: bool = False
     target: str | None = None
+    retired: bool = False
 
     @property
     def path(self):
@@ -220,6 +221,7 @@ class Summary:
     warnings: list = field(default_factory=list)
     proposals: list = field(default_factory=list)
     removed_directories: list = field(default_factory=list)
+    trash_matches: list = field(default_factory=list)
     source_cache_hits: int = 0
     source_cache_misses: int = 0
     source_cache_writes: int = 0

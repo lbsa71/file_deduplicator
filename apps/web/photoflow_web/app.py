@@ -409,9 +409,10 @@ def create_app(root=None, state=None, auth=None, role_resolver=None, static_root
     def execute_plan(ident: str, req: Request):
         user = session(req, 2, True)
         rev = revision(req)
-        plan = workspace.get_plan(user["username"], ident)
-        if plan["revision"] != rev or plan["state"] != "ready":
-            raise Conflict("Batch plan already used or changed; preview again")
+        with library.writer(wait=False):
+            plan = workspace.get_plan(user["username"], ident)
+            if plan["revision"] != rev or plan["state"] != "ready":
+                raise Conflict("Batch plan already used or changed; preview again")
 
         def authorized():
             if role(user["username"]) < 2:

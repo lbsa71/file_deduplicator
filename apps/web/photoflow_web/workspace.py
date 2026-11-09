@@ -267,7 +267,7 @@ class Workspace:
         return result
 
     def create_selection(self, owner, *, targets=None, query=None):
-        with self.library.writer():
+        with self.library.writer(wait=False):
             data = {
                 "id": self.new_id(),
                 "owner": owner,
@@ -309,6 +309,8 @@ class Workspace:
             )
         after = copy.deepcopy(record)
         after.pop("revision", None)
+        if "favorite" in sets or "favorite" in operation["reset"]:
+            after.pop("favorite_decision", None)
         after["overrides"].update(sets)
         for field in operation["reset"]:
             after["overrides"].pop(field, None)
@@ -327,7 +329,7 @@ class Workspace:
         operation = normalize_operation(operation)
         if selection_id is not None and (targets is not None or query is not None):
             raise ValueError("Use one selection source")
-        with self.library.writer():
+        with self.library.writer(wait=False):
             destination = None
             if operation["action"] == "move":
                 folder = self.library.folder(operation["folder_id"])
@@ -392,7 +394,7 @@ class Workspace:
         return self._plan_summary(self._load("batch-plans", owner, ident))
 
     def execute_plan(self, owner, ident, revision, authorize=None):
-        with self.library.writer():
+        with self.library.writer(wait=False):
             data = self._load("batch-plans", owner, ident, expires=True)
             if data["state"] != "ready" or self._version(data)["revision"] != revision:
                 raise Conflict(

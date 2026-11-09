@@ -132,6 +132,15 @@ folder preserves its entire subtree and registry entries. Recovery and catalog
 rebuild read trash manifests explicitly; normal discovery never sees trashed
 media. Trash consumes space and appears in capacity statistics.
 
+PhotoFlow stores explicit local Trash, Restore, and favourite decisions in
+`.photoflow/photo-decisions/`, keyed by the media's SHA-256. Each decision keeps
+its value and timestamp. An import with the same bytes follows the latest local
+decision. Reimported copies of trashed media go to recoverable Trash with their
+source metadata. A later Restore allows future imports again. Existing active
+copies retain their placement. A local favourite or unfavourite takes precedence
+over undated import assertions until the user changes or resets it. The catalog
+can be rebuilt from the filesystem without losing these decisions.
+
 Before trashing a canonical duplicate keeper, choose a verified active copy using
 the normal deterministic keeper policy, transfer any provenance needed for
 continuity, and relink surviving copies in the same recoverable job. Keep human

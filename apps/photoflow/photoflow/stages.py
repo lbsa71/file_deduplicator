@@ -5,6 +5,7 @@ import unicodedata
 from collections import defaultdict
 
 from .content import fingerprint, same_bytes, stable
+from .decisions import is_new_occurrence, library_decisions, trash_manifest
 from .metadata import RESOLVER_VERSION, import_sources, merge_sources, resolution_key, resolve
 from .model import SIDECAR, destination, input_key, timestamp
 from .ports import ChangedError
@@ -56,6 +57,8 @@ class Fingerprint(ItemStage):
 
 class ExtractMetadata(ItemStage):
     def run(self, batch, ctx):
+        if ctx.schema_version == 2:
+            ctx.decisions = library_decisions(ctx.fs, ctx.library_id, batch, dry_run=ctx.config.dry_run)
         for offset in range(0, len(batch), 64):
             chunk = batch[offset:offset + 64]
             prepare = getattr(ctx.reader, 'prepare', None)
@@ -86,8 +89,42 @@ class ExtractMetadata(ItemStage):
             ctx.summary.metadata_extracted += 1
         if changed:
             ctx.event(record, 'metadata_imported', source_count=len(record.data['sources']))
+        favorite = ctx.decisions.get(record.sha, {}).get('favorite')
+        if favorite != record.data.get('favorite_decision'):
+            if favorite is None:
+                record.data.pop('favorite_decision', None)
+            else:
+                record.data['favorite_decision'] = favorite
+            ctx.event(record, 'favorite_decision_applied', decision=favorite)
         refine(record, ctx)
         stable(ctx.fs, item.path, item.observed)
+
+
+class TrashReimports:
+    def run(self, batch, ctx):
+        from .web_operations import execute
+
+        for item in batch:
+            if item.blocked or not is_new_occurrence(item.record):
+                continue
+            decision = ctx.decisions.get(item.record.sha, {}).get('trashed')
+            if not decision or not decision['value']:
+                continue
+            ctx.summary.trash_matches.append({'record_id': item.record.id, 'path': item.path,
+                                              'decision_at': decision['at']})
+            if ctx.config.move_files and not ctx.config.dry_run:
+                stable(ctx.fs, item.path, item.observed)
+                record = copy.deepcopy(item.record)
+                record.data['lifecycle'] = 'trashed'
+                ctx.event(record, 'reimport_trashed', decision=decision)
+                manifest = trash_manifest(record)
+                manifest_path = manifest['sidecar'].removesuffix('record.json') + 'manifest.json'
+                writes = {manifest['sidecar']: record.data, manifest_path: manifest}
+                execute(ctx.fs, ctx.ids.new(),
+                        [{'from': item.path, 'to': manifest['media'], 'sha256': record.sha}],
+                        writes, [item.sidecar_path], dict.fromkeys(writes))
+                ctx.summary.moved += 1
+            item.retired = True
 
 
 def refine(record, ctx):
@@ -234,4 +271,5 @@ class ApplyMoves(ItemStage):
 
 def default_stages():
     from .places import PlaceEnrichment
-    return (Observe(), Fingerprint(), ExtractMetadata(), ExactDuplicates(), PlaceEnrichment(), PlanLocations(), ApplyMoves())
+    return (Observe(), Fingerprint(), ExtractMetadata(), TrashReimports(), ExactDuplicates(),
+            PlaceEnrichment(), PlanLocations(), ApplyMoves())

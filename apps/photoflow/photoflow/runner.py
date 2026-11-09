@@ -37,16 +37,18 @@ class Config:
 
 
 class Context:
-    def __init__(self, fs, clock, ids, reader, config, summary, library_id, snapshot):
+    def __init__(self, fs, clock, ids, reader, config, summary, marker, snapshot):
         self.fs, self.clock, self.ids, self.reader = fs, clock, ids, reader
-        self.config, self.summary, self.library_id = config, summary, library_id
+        self.config, self.summary = config, summary
+        self.library_id, self.schema_version = marker['library_id'], marker['schema_version']
         self.inventory = frozenset(snapshot.files)
         self.observations = snapshot.signatures
-        self.sources = SourceCatalog(fs, self.inventory, library_id, verify=config.verify, summary=summary)
+        self.sources = SourceCatalog(fs, self.inventory, self.library_id, verify=config.verify, summary=summary)
+        self.decisions = {}
         self.dirty = set()
         self.used_documents = set()
         self.reconciled_sidecars = {}
-        self.moves = MoveJournal(fs, ids, library_id)
+        self.moves = MoveJournal(fs, ids, self.library_id)
         self.pending_failure = False
 
     def event(self, record, event_type, **data):
@@ -221,7 +223,7 @@ class Runner:
                     recover(self.fs)
                 moves = MoveJournal(self.fs, self.ids, library_id)
                 if self.config.dry_run:
-                    if self.fs.list_files(PENDING):
+                    if self.fs.list_files(PENDING) or self.fs.list_files('.photoflow/web-operations'):
                         raise ValueError('pending operations need recovery; run without --dry-run first')
                 else:
                     if not self.config.move_files and self.fs.list_files(PENDING):
@@ -230,7 +232,7 @@ class Runner:
                 snapshot = self.fs.inventory()
                 directories = snapshot.directories if self.config.move_files and not self.config.dry_run else ()
                 inventory = snapshot.files
-                ctx = Context(self.fs, self.clock, self.ids, self.reader, self.config, result, library_id, snapshot)
+                ctx = Context(self.fs, self.clock, self.ids, self.reader, self.config, result, marker, snapshot)
                 ctx.geocoder = self.geocoder
                 batch = discover(ctx)
                 result.discovered = len(batch)
@@ -238,6 +240,8 @@ class Runner:
                     stage.run(batch, ctx)
                     if ctx.pending_failure:
                         return result
+                    if result.trash_matches:
+                        batch = tuple(item for item in batch if not item.retired)
                     for item in batch:
                         ctx.persist(item)
                 for item in batch:
