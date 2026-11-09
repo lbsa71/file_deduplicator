@@ -117,3 +117,29 @@ test("the observed framing convention cannot admit corrupt lengths, wrong RPCs o
     assert.equal(calls, 1, "An invalid first page must not trigger pagination");
   }
 });
+
+test("library inventory continues through a null rows page with a cursor", async () => {
+  const cursors = [];
+  const client = new GooglePhotosClient({
+    account: "fixture-account",
+    transport: async ({ data }) => {
+      cursors.push(data[0]);
+      return {
+        account: "fixture-account",
+        status: 200,
+        body: envelope(
+          "lcxiM",
+          data[0] === null ? [null, "next-page"] : [page[0], null],
+        ),
+      };
+    },
+  });
+
+  const inventory = await client.inventory();
+  assert.deepEqual(cursors, [null, "next-page"]);
+  assert.equal(inventory.items.length, 1);
+  assert.equal(inventory.complete, true);
+  for (const cursor of [null, "", "invalid cursor", 123])
+    assert.throws(() => parsePage([null, cursor], "inventory"));
+  assert.throws(() => parsePage([null, "next-page"], "favorites"));
+});

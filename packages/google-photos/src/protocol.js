@@ -148,7 +148,6 @@ export function parsePage(data, kind, expectedAlbum) {
     Array.isArray(context[2]) &&
     context[2][0] === 0 &&
     context[2][1] === 0;
-  const rows = emptyAlbum ? [] : array(data[offset], "page items");
   const cursor = data[offset + 1];
   // Protobuf JSON omits trailing fields. Explicit null/empty and omitted trailing
   // cursor are terminal only after the items array has been validated.
@@ -157,6 +156,12 @@ export function parsePage(data, kind, expectedAlbum) {
     "Invalid continuation token",
   );
   if (cursor) identifier(cursor, "continuation token");
+  // The library can return null rows for an empty page within a scan.
+  // Require a continuation token so null rows never end the scan.
+  const emptyLibraryPage =
+    kind === "inventory" && data[offset] === null && Boolean(cursor);
+  const rows =
+    emptyAlbum || emptyLibraryPage ? [] : array(data[offset], "page items");
   return {
     items: rows.map((row) =>
       kind === "albums"
