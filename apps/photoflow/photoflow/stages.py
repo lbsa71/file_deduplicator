@@ -103,6 +103,23 @@ def refine(record, ctx):
         ctx.event(record, 'metadata_enriched', resolver=RESOLVER_VERSION, changes=changes)
 
 
+def keeper_key(record):
+    # The first source is this occurrence. Merged sources must not give a
+    # previous keeper a permanent scoring advantage on later passes.
+    source_id = record.data['sources'][0]['source_id']
+    provenance = record.data['resolved'].get('provenance', {})
+    own = {
+        field: [a['value'] for a in provenance.get(field, ())
+                if isinstance(a['source'], dict) and a['source'].get('source_id') == source_id]
+        for field in ('capture_time', 'people', 'albums', 'description', 'favorite', 'location')
+    }
+    overrides = record.data['overrides']
+    manual = record.data.get('placement', {}).get('mode') == 'manual'
+    return (-bool(overrides or manual), -len(overrides), -sum(bool(values) for values in own.values()),
+            -len(set(own['people'])) - len(set(own['albums'])), bool(record.data.get('duplicate_of')),
+            'last_processed_at' not in record.data, record.path != destination(record, 'keep'), record.path)
+
+
 class ExactDuplicates:
     def run(self, batch, ctx):
         active = [item for item in batch if not item.blocked]
@@ -122,31 +139,38 @@ class ExactDuplicates:
         for group in groups.values():
             if len(group) < 2:
                 continue
-            group.sort(key=lambda item: (bool(item.record.data.get('duplicate_of')),
-                'last_processed_at' not in item.record.data,
-                item.path != destination(item.record, 'keep'), item.path))
-            keeper = group[0]
-            for item in group[1:]:
-                relation = {'record_id': keeper.record.id, 'sha256': keeper.record.sha}
-                try:
-                    stable(ctx.fs, keeper.path, keeper.observed)
+            group.sort(key=lambda item: keeper_key(item.record))
+            keeper, *copies = group
+            relation = {'record_id': keeper.record.id, 'sha256': keeper.record.sha}
+            previous = keeper.record.data.get('duplicate_of')
+            try:
+                stable(ctx.fs, keeper.path, keeper.observed)
+                for item in copies:
                     stable(ctx.fs, item.path, item.observed)
-                    if item.record.data.get('duplicate_of') != relation:
+                    if previous or item.record.data.get('duplicate_of') != relation:
                         if not same_bytes(ctx.fs, keeper.path, item.path):
                             raise ValueError('full-hash match failed byte comparison')
-                        item.record.data['duplicate_of'] = relation
-                        ctx.event(item.record, 'duplicate_identified', **relation)
-                        ctx.event(keeper.record, 'duplicate_identified', record_id=item.record.id,
-                                  sha256=keeper.record.sha)
-                        ctx.summary.duplicates += 1
+                for item in copies:
                     if merge_sources(keeper.record, item.record):
                         ctx.event(keeper.record, 'sources_merged', from_record_id=item.record.id)
-                        refine(keeper.record, ctx)
-                except (ValueError, OSError, ChangedError) as error:
+                refine(keeper.record, ctx)
+                if previous:
+                    keeper.record.data.pop('duplicate_of')
+                    ctx.event(keeper.record, 'keeper_promoted', previous=previous)
+            except (ValueError, OSError, ChangedError) as error:
+                for item in group:
                     ctx.fail(item, error)
-                    if isinstance(error, ChangedError):
-                        ctx.fail(keeper, error)
-                        break
+                continue
+            relink = [item for item in copies if item.record.data.get('duplicate_of') != relation]
+            for item in relink:
+                ctx.event(keeper.record, 'duplicate_identified', record_id=item.record.id,
+                          sha256=keeper.record.sha)
+            # Publish the keeper's merged metadata before saving links to it.
+            ctx.persist(keeper)
+            for item in relink:
+                item.record.data['duplicate_of'] = relation
+                ctx.event(item.record, 'duplicate_identified', **relation)
+            ctx.summary.duplicates += len(relink)
 
 
 def collision_key(path):

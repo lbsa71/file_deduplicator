@@ -212,9 +212,13 @@ interrupted large pass can reuse completed extraction work.
 Exact matching uses size, a first-1-KiB digest, complete SHA-256, and byte
 comparison before establishing a duplicate relationship. All newly managed
 files receive full hashes because placement and later repair need them. Cached
-records still participate in the current batch's matching. Existing canonical
-files and previously processed records are preferred as keepers; source metadata
-and names are merged into the keeper. Both records and both binaries survive.
+records still participate in matching. Keeper selection first protects manual
+edits and placement, then favors the occurrence with more populated metadata
+fields and more distinct people and album labels. Metadata inherited from other
+copies is excluded from the ranking. Existing keepers and previously processed
+records win ties. All source documents and names are merged into the keeper
+before copies are relinked. Manual overrides remain attached to their own
+records. Both records and both binaries survive.
 By default duplicates move to
 `review/duplicates`; `--duplicates keep` leaves them in the ordinary date layout.
 Review files remain part of subsequent scans and verification.

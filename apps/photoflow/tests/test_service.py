@@ -94,27 +94,93 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(result.hashed, 0)
         self.assertEqual(len(self.reader.calls), 1)
 
-    def test_new_duplicate_matches_cached_file_and_keeps_all_names(self):
+    def test_richer_duplicate_becomes_keeper_and_keeps_all_sources(self):
         self.fs.put('inbox/IMG.jpg', b'photo')
+        self.fs.put('inbox/IMG.jpg.json', b'{"people":[{"name":"Stefan"}]}')
         self.run_pass()
         original_id = self.records()[0]['record_id']
         self.fs.put('inbox/Christmas.jpg', b'photo')
-        metadata = {'people': [{'name': 'Alma'}], 'unknown': {'retained': [1, 2, 3]}}
+        metadata = {'people': [{'name': 'Alma'}], 'description': 'Christmas',
+                    'unknown': {'retained': [1, 2, 3]}}
         self.fs.put('inbox/Christmas.jpg.supplemental-metadata.json', json.dumps(metadata).encode())
         result = self.run_pass()
         records = self.records()
         keeper = next(r for r in records if not r.get('duplicate_of'))
         duplicate = next(r for r in records if r.get('duplicate_of'))
         self.assertEqual(result.duplicates, 1)
-        self.assertEqual(keeper['record_id'], original_id)
-        self.assertEqual(keeper['resolved']['people'], ['Alma'])
+        self.assertEqual(duplicate['record_id'], original_id)
+        self.assertEqual(duplicate['duplicate_of']['record_id'], keeper['record_id'])
+        self.assertEqual(keeper['sources'][0]['original_filename'], 'Christmas.jpg')
+        self.assertEqual(keeper['resolved']['people'], ['Alma', 'Stefan'])
+        self.assertEqual(keeper['resolved']['description'], 'Christmas')
         imported = [d['document'] for s in keeper['sources'] for d in s['documents']]
         self.assertIn(metadata, imported)
         self.assertEqual({s['original_filename'] for s in keeper['sources']}, {'IMG.jpg', 'Christmas.jpg'})
         self.assertTrue(duplicate['file']['relative_path'].startswith('review/duplicates/'))
         self.assertEqual(sum(data == b'photo' for data in self.fs.data.values()), 2)
+        rerun = self.run_pass()
+        retained = next(r for r in self.records() if not r.get('duplicate_of'))
+        self.assertFalse(rerun.errors, rerun.errors)
+        self.assertEqual(rerun.moved, 0)
+        self.assertEqual(retained['record_id'], keeper['record_id'])
+        self.assertEqual(len(retained['sources']), 2)
+
+    def test_late_metadata_can_promote_a_review_copy_and_relink_other_copies(self):
+        for name in ('a.jpg', 'b.jpg', 'c.jpg'):
+            self.fs.put(f'inbox/{name}', b'photo')
         self.run_pass()
-        self.assertEqual(len(next(r for r in self.records() if not r.get('duplicate_of'))['sources']), 2)
+        before = {r['sources'][0]['original_filename']: r for r in self.records()}
+        self.fs.put('inbox/c.jpg.json', b'{"description":"Late caption"}')
+        result = self.run_pass()
+        self.assertFalse(result.errors, result.errors)
+        after = {r['sources'][0]['original_filename']: r for r in self.records()}
+        keeper = after['c.jpg']
+        self.assertNotIn('duplicate_of', keeper)
+        self.assertEqual(keeper['record_id'], before['c.jpg']['record_id'])
+        self.assertEqual(keeper['resolved']['description'], 'Late caption')
+        self.assertEqual(len(keeper['sources']), 3)
+        for name in ('a.jpg', 'b.jpg'):
+            self.assertEqual(after[name]['duplicate_of']['record_id'], keeper['record_id'])
+        self.assertEqual(self.run_pass().moved, 0)
+
+    def test_manual_overrides_keep_the_edited_copy_canonical(self):
+        self.fs.put('inbox/a.jpg', b'photo')
+        self.fs.put('inbox/b.jpg', b'photo')
+        self.run_pass()
+        edited = next(r for r in self.records() if r.get('duplicate_of'))
+        edited['overrides'] = {'description': 'My caption'}
+        self.fs.put(edited['file']['relative_path'] + SIDECAR, json.dumps(edited).encode())
+        self.fs.put('inbox/a.jpg.json', b'{"description":"Imported caption","people":[{"name":"Alma"}]}')
+        result = self.run_pass()
+        self.assertFalse(result.errors, result.errors)
+        keeper = next(r for r in self.records() if not r.get('duplicate_of'))
+        self.assertEqual(keeper['record_id'], edited['record_id'])
+        self.assertEqual(keeper['resolved']['description'], 'My caption')
+        self.assertEqual(keeper['resolved']['people'], ['Alma'])
+
+    def test_keeper_write_failure_prevents_relinking_and_can_be_retried(self):
+        self.fs.put('inbox/a.jpg', b'photo')
+        self.run_pass()
+        old, = self.records()
+        self.fs.put('inbox/b.jpg', b'photo')
+        self.fs.put('inbox/b.jpg.json', b'{"description":"Caption"}')
+        write = self.fs.atomic_write
+
+        def fail_merge(path, data, *, replace=True):
+            if path == 'inbox/b.jpg' + SIDECAR and len(json.loads(data)['sources']) > 1:
+                raise OSError('cannot persist merged keeper')
+            write(path, data, replace=replace)
+
+        self.fs.atomic_write = fail_merge
+        interrupted = self.run_pass()
+        self.assertIn('cannot persist merged keeper', interrupted.errors)
+        self.assertEqual(interrupted.moved, 0)
+        self.assertTrue(all('duplicate_of' not in r for r in self.records()))
+        self.fs.atomic_write = write
+        result = self.run_pass()
+        self.assertFalse(result.errors, result.errors)
+        duplicate, = [r for r in self.records() if r.get('duplicate_of')]
+        self.assertEqual(duplicate['record_id'], old['record_id'])
 
     def test_size_and_prefix_do_not_prove_equality(self):
         self.fs.put('inbox/a.jpg', b'x' * 1024 + b'A')
